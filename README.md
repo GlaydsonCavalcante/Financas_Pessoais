@@ -4,8 +4,14 @@ Robô para leitura de extratos e composição de orçamento mensal
 finance_system/
 ├── data/                   # Armazenamento local (SQLite e Arquivos temp)
 │   └── finance.db
+├── pages/
+│   ├── 1_Importar.py
+│   ├── 2_Classificar.py  <-- AQUI VOCÊ TRABALHA
+│   └── 3_Regras.py       <-- AQUI VOCÊ GERENCIA
 ├── src/
 │   ├── __init__.py
+│   ├── categorizer.py  
+│   ├── database.py
 │   ├── models/             # (MODEL) Definições de Dados
 │   │   ├── __init__.py
 │   │   └── transaction.py  # Dataclass padronizada
@@ -23,3 +29,4 @@ finance_system/
 │       └── formatters.py   # Tratamento de moeda/data
 ├── app.py                  # (VIEW) Interface Streamlit
 └── requirements.txt
+

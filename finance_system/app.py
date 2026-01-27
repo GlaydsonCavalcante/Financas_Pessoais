@@ -1,43 +1,46 @@
 import streamlit as st
 import pandas as pd
 from src.controllers.importer import ImportController
+from src.database import DatabaseManager
 
-st.set_page_config(page_title="Finanças Modo Absoluto", layout="wide")
+st.set_page_config(page_title="Finanças Absolutas", layout="wide")
 
-st.title("Ingestão de Extratos Financeiros")
+st.title("📡 Ingestão de Dados")
 st.markdown("---")
 
 # 1. Upload Area
 uploaded_files = st.file_uploader(
-    "Arraste extratos (CSV, TXT, PDF)", 
+    "Upload de Extratos (CSV/TXT)", 
     accept_multiple_files=True,
-    type=['csv', 'txt', 'pdf']
+    type=['csv', 'txt']
 )
 
 if uploaded_files:
     controller = ImportController()
-    all_transactions = []
     
-    # 2. Processing Loop
     for file in uploaded_files:
         try:
-            transactions = controller.process_file(file)
-            all_transactions.extend(transactions)
-            st.success(f"{file.name}: Processado ({len(transactions)} registros)")
+            total, saved = controller.process_file(file)
+            if saved > 0:
+                st.success(f"{file.name}: {saved} novos registros salvos de {total} lidos.")
+            elif total > 0:
+                st.warning(f"{file.name}: {total} lidos, mas todos já existiam no banco.")
+            else:
+                st.error(f"{file.name}: Nenhum dado lido.")
         except Exception as e:
-            st.error(f"Erro ao ler {file.name}: {str(e)}")
+            st.error(f"Erro em {file.name}: {e}")
 
-    # 3. Validation View
-    if all_transactions:
-        # Converte objetos para dicionários para exibição
-        data = [t.to_dict() for t in all_transactions]
-        df = pd.DataFrame(data)
-        
-        st.subheader("Checkpoint de Validação")
-        st.dataframe(
-            df.sort_values(by="Data", ascending=False), 
-            use_container_width=True,
-            height=600
-        )
-        
-        st.metric("Total Processado", f"R$ {df['Valor'].sum():,.2f}")
+# 2. Resumo Rápido
+db = DatabaseManager()
+all_data = db.get_all_transactions()
+
+if not all_data.empty:
+    st.divider()
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Transações", len(all_data))
+    
+    pending = all_data[all_data['category'].isnull()]
+    c2.metric("Pendentes de Classificação", len(pending), delta_color="inverse")
+    
+    last_date = pd.to_datetime(all_data['date']).max()
+    c3.metric("Última Data", last_date.strftime("%d/%m/%Y"))
