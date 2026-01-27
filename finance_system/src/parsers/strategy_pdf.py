@@ -9,6 +9,7 @@ class CdcPdfParser(IParserStrategy):
     def parse(self, file_buffer, filename: str) -> List[Transaction]:
         transactions = []
         
+        # Abre o PDF a partir da memória
         with pdfplumber.open(file_buffer) as pdf:
             for page in pdf.pages:
                 # Extrai tabelas da página
@@ -16,45 +17,39 @@ class CdcPdfParser(IParserStrategy):
                 
                 for table in tables:
                     for row in table:
-                        # O layout do CDC geralmente é: 
-                        # Col 0: Parcela | Col 1: Vencimento | Col 2: Situação | ... | Col X: Valor
-                        # Precisamos filtrar linhas válidas
-                        
-                        # Remove None e limpa strings
+                        # Limpa linhas vazias ou None
                         clean_row = [str(cell).strip() if cell else "" for cell in row]
                         
-                        # Validação básica: precisa ter data e valor ou situação
+                        # Validação básica: precisa ter pelo menos 3 colunas (Parcela, Vencimento, Situação...)
                         if len(clean_row) < 3:
                             continue
                             
-                        # Detecta cabeçalho e pula
+                        # Pula cabeçalho
                         if "VENCIMENTO" in clean_row[1].upper():
                             continue
 
-                        # Lógica de "Pula Parcela" ou linha vazia
+                        # Ignora parcelas já pagas ou puladas (focamos no fluxo FUTURO ou DÍVIDA ATIVA)
+                        # Se quiser histórico passado, remova o "LIQUIDADA"
                         situacao = clean_row[2].upper()
                         if "PULA" in situacao or "LIQUIDADA" in situacao:
-                            # Se já foi paga ou pulada, não entra no fluxo FUTURO
-                            # Se quiser histórico, remova o "LIQUIDADA"
                             continue
                         
-                        # Tenta extrair data (Coluna 1)
+                        # Tenta extrair data (Coluna 1 geralmente)
                         try:
                             dt_str = clean_row[1]
                             dt_obj = datetime.strptime(dt_str, "%d/%m/%Y").date()
                         except ValueError:
-                            continue # Não é uma linha de dados válida
+                            continue 
 
-                        # Tenta extrair valor (A coluna do valor varia, geralmente é a última preenchida com R$)
-                        # Procura na linha inteira por algo que pareça dinheiro
+                        # Tenta extrair valor (procura R$ em qualquer coluna da linha)
                         amount = 0.0
                         for cell in clean_row:
                             if "R$" in cell:
-                                # Limpa R$, pontos e troca vírgula
+                                # Limpa formatação (R$ 1.000,00 -> 1000.00)
                                 val_clean = cell.replace('R$', '').replace('.', '').replace(',', '.').strip()
                                 try:
                                     amount = float(val_clean)
-                                    # É uma saída futura (Dívida)
+                                    # É uma dívida/saída futura, então negativo
                                     amount = -abs(amount)
                                     break
                                 except:
@@ -63,10 +58,10 @@ class CdcPdfParser(IParserStrategy):
                         if amount != 0:
                             t = Transaction(
                                 date=dt_obj,
-                                description=f"CDC Parcela {clean_row[0]}", # Ex: CDC Parcela 60
+                                description=f"CDC Parcela {clean_row[0]}", 
                                 amount=amount,
                                 source_file=filename,
-                                raw_category="Empréstimos" # Categoria automática
+                                raw_category="Empréstimos"
                             )
                             transactions.append(t)
                             
