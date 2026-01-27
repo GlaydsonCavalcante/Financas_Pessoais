@@ -5,7 +5,7 @@ import hashlib
 import os  # <--- NOVA IMPORTAÇÃO NECESSÁRIA
 
 class DatabaseManager:
-    def __init__(self, db_path="data/finance.db"):
+    def __init__(self, db_path="finance_system/data/finance.db"):
         self.db_path = db_path
         
         # --- BLOCO DE CORREÇÃO (BLINDAGEM) ---
