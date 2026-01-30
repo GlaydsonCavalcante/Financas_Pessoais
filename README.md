@@ -2,31 +2,28 @@
 Robô para leitura de extratos e composição de orçamento mensal
 
 finance_system/
-├── data/                   # Armazenamento local (SQLite e Arquivos temp)
-│   └── finance.db
-├── pages/
-│   ├── 1_Importar.py
-│   ├── 2_Classificar.py  <-- AQUI VOCÊ TRABALHA
-│   └── 3_Regras.py       <-- AQUI VOCÊ GERENCIA
+├── app.py                     # (VIEW) Ponto de entrada (Main Router)
+├── pages/                     # (VIEW) Telas do sistema
+│   ├── 1_📥_Extratos.py       # Upload de CSV/TXT
+│   ├── 2_📝_Emprestimos.py    # Nova tela de Cadastro Manual
+│   ├── 3_🏷️_Classificacao.py  # Gestão de categorias
+│   └── 4_📊_Dashboard.py      # Visão Gerencial
 ├── src/
 │   ├── __init__.py
-│   ├── categorizer.py  
-│   ├── database.py
-│   ├── models/             # (MODEL) Definições de Dados
+│   ├── database/              # (INFRA) Acesso a Dados
 │   │   ├── __init__.py
-│   │   └── transaction.py  # Dataclass padronizada
-│   ├── parsers/            # (LOGIC) Estratégias de ETL
+│   │   ├── connection.py      # Gerenciador de conexão Singleton
+│   │   └── repository.py      # CRUD genérico e especializado
+│   ├── models/                # (MODEL) Definições de Dados
 │   │   ├── __init__.py
-│   │   ├── interface.py    # Classe Abstrata (Protocol)
-│   │   ├── strategy_csv.py # Parser Conta Corrente
-│   │   ├── strategy_txt.py # Parser Cartão SISBB (Regex)
-│   │   └── strategy_pdf.py # Parser Empréstimo
-│   ├── controllers/        # (CONTROLLER) Orquestração
+│   │   ├── transaction.py     # Dataclass Transação
+│   │   └── loan.py            # Dataclass Contrato de Empréstimo
+│   ├── services/              # (CONTROLLER) Regras de Negócio Puras
 │   │   ├── __init__.py
-│   │   └── importer.py     # Recebe arquivo -> Devolve Dados
-│   └── utils/
+│   │   ├── importer_service.py # Orquestra leituras de arquivos
+│   │   ├── loan_service.py     # Gera as parcelas futuras
+│   │   └── categorizer.py      # Motor de Inteligência
+│   └── utils/                 # (HELPERS)
 │       ├── __init__.py
-│       └── formatters.py   # Tratamento de moeda/data
-├── app.py                  # (VIEW) Interface Streamlit
+│       └── parsers.py         # Lógica de parsing (CSV, TXT) isolada
 └── requirements.txt
-

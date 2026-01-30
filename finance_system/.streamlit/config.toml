@@ -1,0 +1,9 @@
+[client]
+showErrorDetails = true
+toolbarMode = "viewer"
+
+[logger]
+level = "debug"
+
+[server]
+runOnSave = true
