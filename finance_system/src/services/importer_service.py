@@ -63,3 +63,73 @@ class ImporterService:
         finally:
             conn.close()
         return count
+
+    def preview_vacation_mode(self, start_date, end_date):
+        """
+        Simula a lógica de Férias:
+        Busca transações no período e separa o que é Recorrente (protegido) do que é Pontual (férias).
+        """
+        conn = db_instance.get_connection()
+        try:
+            # 1. Busca candidatos dentro da janela
+            # Ignora o que já for 'Férias' ou 'Ignorado'
+            candidates = pd.read_sql_query(f"""
+                SELECT * FROM transactions 
+                WHERE date BETWEEN '{start_date}' AND '{end_date}'
+                AND (category != 'Férias' OR category IS NULL)
+                AND (category != '⛔ IGNORADO' OR category IS NULL)
+            """, conn)
+            
+            to_update = []
+            protected = []
+            
+            cursor = conn.cursor()
+            
+            for _, row in candidates.iterrows():
+                desc = row['description']
+                
+                # 2. O Teste de Recorrência
+                # Verifica se esta descrição aparece FORA da janela temporal selecionada
+                # (Isso indica que é uma conta mensal comum, como Escola ou Aluguel)
+                cursor.execute(f"""
+                    SELECT count(*) FROM transactions 
+                    WHERE description = ? 
+                    AND date NOT BETWEEN '{start_date}' AND '{end_date}'
+                """, (desc,))
+                
+                count_outside = cursor.fetchone()[0]
+                
+                item = {
+                    "hash_id": row['hash_id'],
+                    "Data": row['date'],
+                    "Descrição": desc,
+                    "Valor": row['amount'],
+                    "Categoria Atual": row['category']
+                }
+                
+                if count_outside > 0:
+                    # É recorrente (Existe fora das férias) -> Protege
+                    protected.append(item)
+                else:
+                    # É exclusivo deste período -> Vira Férias
+                    to_update.append(item)
+                    
+            return pd.DataFrame(to_update), pd.DataFrame(protected)
+            
+        finally:
+            conn.close()
+
+    def apply_vacation_batch(self, hash_ids: list):
+        """Aplica a categoria 'Férias' em lote para os IDs validados."""
+        conn = db_instance.get_connection()
+        try:
+            cursor = conn.cursor()
+            # Otimização: Executa updates em lote
+            cursor.executemany(
+                "UPDATE transactions SET category = 'Férias', is_manual = 1 WHERE hash_id = ?",
+                [(h,) for h in hash_ids]
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
