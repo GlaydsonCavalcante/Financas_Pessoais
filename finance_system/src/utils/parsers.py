@@ -12,77 +12,91 @@ def _generate_hash(t: Transaction) -> str:
 
 def parse_bb_csv(file_buffer, filename: str) -> List[Transaction]:
     """
-    Lê CSV padrão do Banco do Brasil (Conta Corrente).
-    Espera colunas: "Data", "Histórico", "Valor".
+    Lê CSV do Banco do Brasil.
+    Correção: Ajustado para ler decimais com PONTO (.) conforme amostra 'extrato (1).csv'.
     """
     transactions = []
     try:
         # Tenta ler com encoding comum do BB (latin-1)
-        df = pd.read_csv(file_buffer, encoding='latin-1', sep=',', thousands='.', decimal=',')
+        # CORREÇÃO AQUI: decimal='.' e thousands=None (padrão US)
+        df = pd.read_csv(file_buffer, encoding='latin-1', sep=',', quotechar='"', decimal='.')
     except:
         file_buffer.seek(0)
-        df = pd.read_csv(file_buffer, encoding='utf-8', sep=',', thousands='.', decimal=',')
+        df = pd.read_csv(file_buffer, encoding='utf-8', sep=',', quotechar='"', decimal='.')
 
-    # Normalização de Colunas
+    # Normalização de Colunas (Remove espaços extras nos nomes)
+    df.columns = [c.strip() for c in df.columns]
+
+    # Verifica colunas essenciais
     required = ["Data", "Histórico", "Valor"]
     if not all(col in df.columns for col in required):
         return []
 
     for _, row in df.iterrows():
-        # Ignora linhas de saldo/totais
-        if "Saldo" in str(row["Histórico"]):
+        # Ignora linhas de saldo/totais ou vazias
+        hist = str(row["Histórico"])
+        if "Saldo" in hist or "S A L D O" in hist:
             continue
             
         try:
+            # Data
             dt_obj = pd.to_datetime(row["Data"], format="%d/%m/%Y").date()
-            amount = float(row["Valor"])
-            desc = str(row["Histórico"]).strip()
             
-            # Limpeza de Descrição (Remove prefixos comuns do BB)
-            # Ex: "Compra com Cartão - 27/11 09:02 UBER" -> "UBER"
-            # Regex procura por padrão de data/hora no meio da string para cortar
-            clean_desc = re.sub(r'Compra com Cartão - \d{2}/\d{2} \d{2}:\d{2} ', '', desc)
-            clean_desc = re.sub(r'Pix - Enviado - \d{2}/\d{2} \d{2}:\d{2} ', 'Pix env: ', clean_desc)
+            # Valor (Já vem float correto devido ao decimal='.')
+            amount = float(row["Valor"])
+            
+            # Descrição
+            desc = hist.strip()
+            # Limpeza de Prefixos Comuns
+            desc = re.sub(r'Compra com Cartão - \d{2}/\d{2} \d{2}:\d{2} ', '', desc)
+            desc = re.sub(r'Pix - Enviado - \d{2}/\d{2} \d{2}:\d{2} ', 'Pix env: ', desc)
+            desc = re.sub(r'Pix - Recebido - \d{2}/\d{2} \d{2}:\d{2} ', 'Pix rec: ', desc)
 
             t = Transaction(
                 date=dt_obj,
-                description=clean_desc,
+                description=desc,
                 amount=amount,
                 source=f"CSV: {filename}",
-                category=None, # Será preenchido pelo Categorizer Service futuramente
+                category=None,
                 is_manual=False
             )
             t.hash_id = _generate_hash(t)
             transactions.append(t)
-        except Exception:
+        except Exception as e:
+            # Pula linhas com erro de conversão
             continue
             
     return transactions
 
 def parse_sisbb_txt(file_buffer, filename: str) -> List[Transaction]:
     """
-    Lê arquivo de impressão (Spool) do SISBB - Cartão de Crédito.
-    Usa Regex para extrair dados de layout visual.
+    Lê arquivo de fatura do Cartão (TXT/Spool).
+    Mantém lógica brasileira (Vírgula para decimais).
     """
-    content = file_buffer.getvalue().decode('latin-1')
+    try:
+        content = file_buffer.getvalue().decode('latin-1')
+    except:
+        content = file_buffer.getvalue().decode('utf-8')
+        
     transactions = []
     
-    # Regex Poderoso: Captura Data (dd.mm.aaaa) + Descrição + Valor (com ou sem sinal)
-    # Ex: 27.11.2025    BONNAPAN    52,00
-    pattern = re.compile(r"^(\d{2}\.\d{2}\.\d{4})(.*?)\s+(-?[\d\.]+,\d{2})")
+    # Regex ajustado para capturar a linha da fatura
+    # Ex: 27.11    BONNAPAN    52,00
+    # O ano geralmente vem no cabeçalho, mas o BB repete data completa às vezes ou só DD.MM
+    # Vamos assumir DD.MM.AAAA com base no seu arquivo sample
+    pattern = re.compile(r"^(\d{2}\.\d{2}\.\d{4}?)(.*?)\s+(-?[\d\.]+,\d{2})")
 
     capture_mode = False
     
     for line in content.split('\n'):
         line = line.strip()
         
-        # Ativa captura apenas dentro do bloco de transações
+        # Gatilhos de início e fim de leitura
         if "Data" in line and "Transações" in line:
             capture_mode = True
             continue
         if "--------" in line and capture_mode:
-            # Tracejado geralmente indica fim ou totalizadores
-            # Se a linha for apenas tracejada, pode ser fim
+            # Se for apenas tracejado, não faz nada, mas se tiver texto depois, pode ser rodapé
             pass
 
         if not capture_mode:
@@ -92,19 +106,21 @@ def parse_sisbb_txt(file_buffer, filename: str) -> List[Transaction]:
         if match:
             dt_str, desc, val_str = match.groups()
             
-            # Filtros de exclusão (Pagamentos de fatura não são despesas aqui)
+            # Filtra linhas de pagamento ou saldo anterior
             if "SALDO FATURA" in desc or "PGTO DEBITO" in desc:
                 continue
 
             try:
-                # Tratamento de Valor PT-BR
+                # Tratamento de Valor (Padrão BR: 1.000,00 -> 1000.00)
                 clean_val = val_str.replace('.', '').replace(',', '.')
                 amount = float(clean_val)
                 
-                # Regra de Negócio: No TXT do cartão, valor positivo é gasto.
-                # No nosso sistema, gasto deve ser negativo.
+                # Regra: No TXT, gasto vem positivo. Inverter para negativo.
                 amount = -abs(amount)
 
+                # Tratamento de Data
+                # Se vier apenas DD.MM, precisamos adivinhar o ano (arriscado), 
+                # mas seu sample mostra DD.MM.AAAA (12.09.2024), então parsing direto.
                 dt_obj = datetime.strptime(dt_str, "%d.%m.%Y").date()
 
                 t = Transaction(
@@ -112,7 +128,7 @@ def parse_sisbb_txt(file_buffer, filename: str) -> List[Transaction]:
                     description=desc.strip(),
                     amount=amount,
                     source=f"Card: {filename}",
-                    category="Cartão de Crédito", # Categoria provisória
+                    category=None,
                     is_manual=False
                 )
                 t.hash_id = _generate_hash(t)
