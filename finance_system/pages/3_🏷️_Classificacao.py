@@ -47,19 +47,32 @@ with tab_pendencias:
     else:
         st.info(f"Pendências Restantes: {len(pending_df)}")
         
-        # --- LÓGICA DE NAVEGAÇÃO INTELIGENTE ---
-        # Lista única de descrições para o Selectbox
-        unique_descs = pending_df['description'].unique()
+        # --- LÓGICA DE ORDENAÇÃO INTELIGENTE (NOVO) ---
+        # 1. Conta quantas vezes cada descrição aparece
+        # 2. Cria um DataFrame temporário para ordenar
+        ranking = pending_df['description'].value_counts().reset_index()
+        ranking.columns = ['description', 'count']
+        
+        # 3. Ordena por: Quantidade (Descendente) e depois Nome (Ascendente)
+        ranking = ranking.sort_values(by=['count', 'description'], ascending=[False, True])
+        
+        # 4. Gera a lista final ordenada
+        unique_descs = ranking['description'].tolist()
+        
+        # (Opcional) Adiciona a contagem visualmente no dropdown para você saber o impacto
+        # Mas internamente o selectbox precisa do valor original, então mantemos a lista limpa
+        # e mostramos a quantidade apenas na mensagem abaixo.
+        # -----------------------------------------------
         
         # Inicializa o ponteiro se não existir
         if 'current_index' not in st.session_state:
             st.session_state['current_index'] = 0
             
-        # Garante que o índice não estoure o tamanho da lista (caso a lista diminua)
+        # Garante que o índice não estoure
         if st.session_state['current_index'] >= len(unique_descs):
             st.session_state['current_index'] = 0
             
-        # Botões de Navegação (Anterior / Próximo) para pular itens difíceis
+        # Botões de Navegação
         col_nav1, col_nav2, col_nav3 = st.columns([1, 4, 1])
         if col_nav1.button("⬅️ Anterior"):
             st.session_state['current_index'] = max(0, st.session_state['current_index'] - 1)
@@ -69,12 +82,12 @@ with tab_pendencias:
             st.session_state['current_index'] = min(len(unique_descs) - 1, st.session_state['current_index'] + 1)
             st.rerun()
 
-        # O Selectbox agora usa o índice da sessão como padrão
+        # O Selectbox agora usa a lista ORDENADA POR FREQUÊNCIA
         selected_desc = col_nav2.selectbox(
-            "Item para classificar:", 
+            f"Item para classificar ({st.session_state['current_index'] + 1}/{len(unique_descs)}):", 
             unique_descs,
             index=st.session_state['current_index'],
-            key="sb_pendencias" # Key fixa ajuda a manter estado
+            key="sb_pendencias"
         )
         
         # --- FIM DA LÓGICA DE NAVEGAÇÃO ---
@@ -107,22 +120,72 @@ with tab_pendencias:
             )
 
         with col_action:
-            # --- DETECTOR DE PARCELAMENTO ---
+            # --- DETECTOR DE PARCELAMENTO OTIMIZADO ---
             is_parc, curr, total, clean_name = service.detect_installment(selected_desc)
             
             if is_parc and curr == 1 and total > 1:
-                st.warning(f"🧩 Parcelamento ({curr}/{total})")
-                base_val = affected_rows.iloc[0]['amount']
-                total_val = base_val * total
-                
-                if st.button(f"🔗 Unificar (R$ {total_val:,.2f})", type="primary", use_container_width=True):
-                    for idx, row in affected_rows.iterrows():
-                        service.unify_installments(row['hash_id'], row['description'], row['amount'], total, clean_name)
-                    service.create_rule(clean_name, CATEGORY_IGNORE) # Bloqueia futuras
-                    st.success("Unificado!")
-                    # Não incrementamos index aqui pois o item some da lista e o index aponta pro próximo naturalmente
-                    st.rerun()
-                st.divider()
+                # Caixa de destaque visual
+                with st.container(border=True):
+                    st.warning(f"🧩 Parcelamento Detectado ({curr}/{total})")
+                    
+                    base_val = affected_rows.iloc[0]['amount']
+                    total_val = base_val * total
+                    
+                    st.markdown(f"""
+                    **Resumo da Unificação:**
+                    * De: `R$ {base_val:,.2f}` (Parcela)
+                    * Para: `R$ {total_val:,.2f}` (Total à Vista)
+                    """)
+                    
+                    # --- NOVIDADE: ESCOLHA A CATEGORIA AQUI DENTRO ---
+                    st.markdown("---")
+                    st.caption("Já defina a categoria para finalizar:")
+                    
+                    # Reusa a lógica de categorias existentes
+                    existing_cats_parc = service.get_unique_categories()
+                    if not existing_cats_parc.empty:
+                        opts_parc = existing_cats_parc[existing_cats_parc['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
+                        opts_parc.sort()
+                    else:
+                        opts_parc = []
+                        
+                    parc_options = ["➕ Nova Categoria..."] + opts_parc
+                    
+                    # Key única para não conflitar com o outro seletor
+                    sel_cat_parc = st.selectbox("Categoria (Unificação):", parc_options, key="cat_parc_unique")
+                    
+                    if sel_cat_parc == "➕ Nova Categoria...":
+                        final_cat_parc = st.text_input("Nome da Nova Categoria:", key="txt_parc_unique")
+                    else:
+                        final_cat_parc = sel_cat_parc
+                    
+                    # BOTÃO ÚNICO PODEROSO
+                    if st.button("⚡ Unificar, Classificar & Ignorar Futuros", type="primary"):
+                        if not cat_parc:
+                            st.error("É obrigatório escolher uma categoria para unificar.")
+                        else:
+                            # 1. Aplica Unificação JÁ COM A CATEGORIA
+                            # Isso evita o "Fantasma" pois faz tudo num único acesso ao banco
+                            for idx, row in affected_rows.iterrows():
+                                service.unify_installments(
+                                    hash_id=row['hash_id'], 
+                                    description=row['description'], 
+                                    amount=row['amount'], 
+                                    total_parc=total, 
+                                    clean_desc=clean_name,
+                                    category=cat_parc # <--- O SEGREDO ESTÁ AQUI
+                                )
+                            
+                            # 2. Cria regra para bloquear futuros
+                            service.create_rule(clean_name, CATEGORY_IGNORE)
+                            
+                            st.success("Resolvido e Classificado!")
+                            st.session_state['current_index'] = 0 
+                            
+                            # Limpa cache para garantir que a tela atualize com o dado novo do banco
+                            st.cache_data.clear()
+                            st.rerun()
+
             # -------------------------------
 
             with st.container(border=True):
@@ -188,7 +251,7 @@ with tab_pendencias:
                 st.markdown("---")
                 
                 # --- AÇÃO DE IGNORAR ---
-                if st.button(f"🚫 {CATEGORY_IGNORE}", use_container_width=True):
+                if st.button(f"{CATEGORY_IGNORE}", use_container_width=True):
                     if "Criar Regra" in apply_mode:
                         service.create_rule(selected_desc, CATEGORY_IGNORE)
                     else:

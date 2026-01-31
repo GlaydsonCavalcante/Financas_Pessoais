@@ -1,6 +1,7 @@
 from typing import List, Tuple
 from src.database.connection import db_instance
 import re
+import pandas as pd
 
 class CategorizerService:
     """
@@ -187,34 +188,123 @@ class CategorizerService:
                 
         return False, 0, 0, description
 
-    def unify_installments(self, hash_id: str, description: str, amount: float, total_parc: int, clean_desc: str):
+    def unify_installments(self, hash_id: str, description: str, amount: float, total_parc: int, clean_desc: str, category: str = None):
         """
-        Transforma a parcela 01 no valor total e cria regra de bloqueio para as demais.
+        Unifica valor, altera descrição E JÁ APLICA A CATEGORIA (Atomic Update).
         """
         conn = db_instance.get_connection()
         try:
             full_value = amount * total_parc
             new_desc = f"{clean_desc} (Total {total_parc}x)"
             
-            # 1. Atualiza a transação atual (a parcela 01)
-            # Torna ela 'is_manual' para proteger de alterações
-            conn.execute('''
+            # Se a categoria foi informada, já atualiza ela junto
+            # Se não, mantém NULL (caso antigo)
+            sql = '''
                 UPDATE transactions 
                 SET amount = ?, description = ?, is_manual = 1
-                WHERE hash_id = ?
-            ''', (full_value, new_desc, hash_id))
+            '''
+            params = [full_value, new_desc]
             
-            # 2. Cria regra para IGNORAR as parcelas futuras
-            # A lógica é: Se contiver o nome do estabelecimento E indicativo de parcela
-            # Mas como o nome do estabelecimento varia, vamos criar uma regra focada no "clean_desc"
-            # Ex: Regra -> Se tiver "CASA FESTA" -> Ignorado? NÃO, perigoso.
-            # Vamos criar uma regra específica para o termo original COM o indicativo de parcela genérico
+            if category:
+                sql += ", category = ?"
+                params.append(category)
+                
+            sql += " WHERE hash_id = ?"
+            params.append(hash_id)
             
-            # Estratégia Segura: O usuário vai classificar as futuras parcelas como "Ignorado" manualmente na primeira vez
-            # ou podemos tentar criar uma regra baseada no trecho fixo.
-            
-            # Vamos retornar True para a interface avisar que deu certo
+            conn.execute(sql, params)
             conn.commit()
             return True, full_value, new_desc
         finally:
             conn.close()
+
+    def unify_installments_batch(df):
+        """
+        Processa um DataFrame de transações para converter parcelamentos (Caixa) 
+        em compras únicas (Competência).
+        
+        Lógica:
+        1. Identifica a parcela 01/XX.
+        2. Calcula o valor total (Valor da Parcela * Total de Parcelas).
+        3. Atualiza a linha da parcela 01 com o valor cheio e remove a numeração.
+        4. Identifica e remove todas as parcelas subsequentes (02, 03...) presentes no arquivo
+        para evitar duplicidade.
+        """
+        
+        # 1. Preparação: Extração segura de dados de parcelamento
+        # Regex captura padrões como "01/10", "1/10", "01 / 10"
+        regex_pattern = r'(\d{1,2})\s*/\s*(\d{1,2})'
+        
+        def extract_parcel_info(desc):
+            match = re.search(regex_pattern, str(desc))
+            if match:
+                curr, total = map(int, match.groups())
+                # Limpa o nome removendo "01/10", "Parc 01/10", etc.
+                # Remove a parte da string que deu match e limpa espaços extras
+                clean_name = re.sub(regex_pattern, '', str(desc), 1)
+                clean_name = re.sub(r'(?i)parc\.?|parcela', '', clean_name).strip()
+                # Remove traços ou pontos soltos no final
+                clean_name = clean_name.strip(' -.')
+                return curr, total, clean_name
+            return None, None, desc
+
+        # Aplica a extração criando colunas temporárias
+        # (Usamos zip para fazer isso de forma vetorizada e rápida)
+        df_temp = df['description'].apply(extract_parcel_info).tolist()
+        df[['p_curr', 'p_total', 'clean_desc']] = pd.DataFrame(df_temp, index=df.index)
+
+        # 2. Identificar as "Cabeças" (Parcela 01 de XX)
+        # Filtramos onde p_curr é 1 e p_total > 1
+        heads_mask = (df['p_curr'] == 1) & (df['p_total'] > 1)
+        
+        # Se não tiver parcelas, retorna o DF original limpo
+        if not heads_mask.any():
+            return df.drop(columns=['p_curr', 'p_total', 'clean_desc'], errors='ignore')
+
+        # Lista para armazenar índices das parcelas futuras que serão removidas
+        indexes_to_remove = []
+        
+        # 3. Processamento das Cabeças
+        # Iteramos apenas sobre as linhas que são "01/XX"
+        for idx, row in df[heads_mask].iterrows():
+            total_installments = int(row['p_total'])
+            installment_value = row['amount']
+            clean_name = row['clean_desc']
+            
+            # --- PASSO A: TRANSFORMAR EM COMPETÊNCIA ---
+            # Calcula o valor total da compra
+            full_value = installment_value * total_installments
+            
+            # Atualiza a linha original (A "01/XX" vira a compra cheia)
+            df.at[idx, 'amount'] = full_value
+            df.at[idx, 'description'] = f"{clean_name} (Compra Parcelada {total_installments}x)"
+            # Opcional: Marcar uma flag para saber que foi unificado auto
+            df.at[idx, 'auto_unified'] = True 
+
+            # --- PASSO B: LIMPAR AS PARCELAS FUTURAS ---
+            # Procuramos no MESMO dataframe as parcelas 02, 03... desse mesmo item.
+            # Critério rigoroso: Mesmo Nome Limpo + Mesmo Valor de Parcela (aprox) + Parcela > 1
+            
+            # Margem de erro de 1 centavo para o valor da parcela (arredondamentos bancários)
+            siblings_mask = (
+                (df['clean_desc'] == clean_name) & 
+                (df['p_curr'] > 1) & 
+                (abs(df['amount'] - installment_value) < 0.05) # Tolerância de 5 centavos
+            )
+            
+            # Adiciona os índices encontrados para remoção
+            siblings_indexes = df[siblings_mask].index.tolist()
+            indexes_to_remove.extend(siblings_indexes)
+
+        # 4. Finalização
+        # Remove as linhas das parcelas 02, 03... (pois o valor já está somado na 01)
+        df_final = df.drop(index=indexes_to_remove).copy()
+        
+        # Remove colunas auxiliares
+        df_final = df_final.drop(columns=['p_curr', 'p_total', 'clean_desc'], errors='ignore')
+        
+        print(f"✅ Unificação Concluída: {heads_mask.sum()} compras unificadas.")
+        print(f"🗑️ Parcelas futuras removidas: {len(indexes_to_remove)}")
+        
+        return df_final
+
