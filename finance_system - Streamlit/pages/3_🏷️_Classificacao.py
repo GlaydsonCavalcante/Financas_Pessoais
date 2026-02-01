@@ -30,7 +30,7 @@ with st.sidebar:
 st.markdown("---")
 
 # 3 ABAS AGORA
-tab_pendencias, tab_ferias, tab_regras = st.tabs(["📝 Pendências", "🏖️ Modo Férias (Lote)", "⚙️ Regras"])
+tab_pendencias, tab_lote, tab_ferias, tab_regras = st.tabs(["📝 Pendências", "📦 Em Lote (Rápido)", "🏖️ Modo Férias", "⚙️ Regras"])
 
 # --- TAB 1: PENDÊNCIAS ---
 with tab_pendencias:
@@ -47,46 +47,22 @@ with tab_pendencias:
     else:
         st.info(f"Pendências Restantes: {len(pending_df)}")
         
-        # --- LÓGICA DE ORDENAÇÃO INTELIGENTE (NOVO) ---
+        # --- LÓGICA DE ORDENAÇÃO INTELIGENTE (SIMPLIFICADA) ---
         # 1. Conta quantas vezes cada descrição aparece
-        # 2. Cria um DataFrame temporário para ordenar
         ranking = pending_df['description'].value_counts().reset_index()
         ranking.columns = ['description', 'count']
         
-        # 3. Ordena por: Quantidade (Descendente) e depois Nome (Ascendente)
+        # 2. Ordena por: Quantidade (Descendente) e depois Nome (Ascendente)
         ranking = ranking.sort_values(by=['count', 'description'], ascending=[False, True])
         
-        # 4. Gera a lista final ordenada
+        # 3. Gera a lista final ordenada
         unique_descs = ranking['description'].tolist()
         
-        # (Opcional) Adiciona a contagem visualmente no dropdown para você saber o impacto
-        # Mas internamente o selectbox precisa do valor original, então mantemos a lista limpa
-        # e mostramos a quantidade apenas na mensagem abaixo.
-        # -----------------------------------------------
-        
-        # Inicializa o ponteiro se não existir
-        if 'current_index' not in st.session_state:
-            st.session_state['current_index'] = 0
-            
-        # Garante que o índice não estoure
-        if st.session_state['current_index'] >= len(unique_descs):
-            st.session_state['current_index'] = 0
-            
-        # Botões de Navegação
-        col_nav1, col_nav2, col_nav3 = st.columns([1, 4, 1])
-        if col_nav1.button("⬅️ Anterior"):
-            st.session_state['current_index'] = max(0, st.session_state['current_index'] - 1)
-            st.rerun()
-            
-        if col_nav3.button("Próximo ➡️"):
-            st.session_state['current_index'] = min(len(unique_descs) - 1, st.session_state['current_index'] + 1)
-            st.rerun()
-
-        # O Selectbox agora usa a lista ORDENADA POR FREQUÊNCIA
-        selected_desc = col_nav2.selectbox(
-            f"Item para classificar ({st.session_state['current_index'] + 1}/{len(unique_descs)}):", 
+        # --- SELETOR SIMPLIFICADO ---
+        # Removemos os botões de navegação e usamos apenas o selectbox
+        selected_desc = st.selectbox(
+            f"Selecione o item para classificar (Total: {len(unique_descs)}):", 
             unique_descs,
-            index=st.session_state['current_index'],
             key="sb_pendencias"
         )
         
@@ -331,3 +307,86 @@ with tab_regras:
                     service.delete_rule(row['match_term'])
                     st.rerun()
             st.divider()
+
+# --- TAB 2: CLASSIFICAÇÃO EM LOTE ---
+with tab_lote:
+    st.markdown("### 📦 Agrupamento por Similaridade")
+    st.caption("Selecione múltiplos itens da lista abaixo para categorizar todos de uma vez.")
+    
+    # 1. Busca dados agrupados
+    df_grouped = service.get_grouped_pending()
+    
+    if df_grouped.empty:
+        st.success("Nada para agrupar! Tudo limpo.")
+    else:
+        # 2. Prepara o DataFrame para edição
+        # Adiciona coluna de seleção (Checkbox)
+        df_grouped.insert(0, "Selecionar", False)
+        
+        # Configuração visual das colunas
+        edited_df = st.data_editor(
+            df_grouped,
+            column_config={
+                "Selecionar": st.column_config.CheckboxColumn(
+                    "Agrupar",
+                    help="Selecione para aplicar a ação em massa",
+                    default=False,
+                ),
+                "description": st.column_config.TextColumn("Descrição Original", disabled=True),
+                "qtd": st.column_config.NumberColumn("Qtd", help="Quantas vezes aparece", disabled=True),
+                "avg_amount": st.column_config.NumberColumn("Valor Médio", format="R$ %.2f", disabled=True)
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=500
+        )
+        
+        # 3. Lógica de Ação
+        # Filtra apenas os marcados com True
+        selected_rows = edited_df[edited_df["Selecionar"] == True]
+        
+        st.divider()
+        
+        if not selected_rows.empty:
+            count_items = len(selected_rows)
+            total_affected = selected_rows['qtd'].sum()
+            
+            st.info(f"Selecionados: **{count_items}** descrições (afetará **{total_affected}** transações).")
+            
+            c1, c2, c3 = st.columns([2, 1, 1])
+            
+            with c1:
+                # Reusa lógica de categorias existentes
+                existing_cats = service.get_unique_categories()
+                
+                # Pega as categorias normais (sem o ignorado)
+                valid_cats = existing_cats[existing_cats['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
+                valid_cats.sort()
+                
+                # CORREÇÃO: Adiciona "IGNORADO" explicitamente no topo da lista
+                opts = ["", CATEGORY_IGNORE] + valid_cats
+                
+                batch_category = st.selectbox("Aplicar Categoria:", opts, key="sb_batch")
+                
+            with c2:
+                st.write("") # Espaçamento
+                st.write("") 
+                create_rule_batch = st.checkbox("Criar Regra?", value=True, help="Aplica para o futuro também")
+                
+            with c3:
+                st.write("") # Espaçamento
+                st.write("") 
+                if st.button("🚀 Aplicar em Massa", type="primary"):
+                    if not batch_category:
+                        st.error("Escolha uma categoria.")
+                    else:
+                        descriptions_to_update = selected_rows['description'].tolist()
+                        affected = service.apply_batch_by_description(
+                            descriptions_to_update, 
+                            batch_category, 
+                            create_rule_batch
+                        )
+                        st.success(f"Feito! {affected} transações atualizadas.")
+                        st.rerun()
+        else:
+            st.caption("Marque as caixas na tabela acima para habilitar as ações.")

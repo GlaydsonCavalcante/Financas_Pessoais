@@ -310,7 +310,10 @@ class CategorizerService:
         return df_final
 
     def get_grouped_pending(self):
-        """Retorna pendências agrupadas por descrição (Para Aba Lote)."""
+        """
+        Retorna pendências agrupadas por descrição para classificação em lote.
+        Colunas: [description, count, avg_amount]
+        """
         conn = db_instance.get_connection()
         try:
             import pandas as pd
@@ -325,37 +328,6 @@ class CategorizerService:
                 ORDER BY description ASC
             """
             return pd.read_sql_query(query, conn)
-        finally:
-            conn.close()
-
-    def apply_batch_by_description(self, descriptions: list, category: str, create_rule: bool):
-        """Aplica categoria em massa baseada na descrição exata."""
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            
-            # 1. Cria regras (opcional)
-            if create_rule:
-                for desc in descriptions:
-                    try:
-                        cursor.execute(
-                            "INSERT OR IGNORE INTO classification_rules (match_term, target_category) VALUES (?, ?)", 
-                            (desc, category)
-                        )
-                    except: pass
-
-            # 2. Atualiza transações
-            placeholders = ', '.join(['?'] * len(descriptions))
-            sql = f"""
-                UPDATE transactions 
-                SET category = ?, is_manual = 1 
-                WHERE description IN ({placeholders}) 
-                  AND (category IS NULL OR category = '')
-            """
-            params = [category] + descriptions
-            cursor.execute(sql, params)
-            conn.commit()
-            return cursor.rowcount
         finally:
             conn.close()
 
@@ -399,74 +371,5 @@ class CategorizerService:
             
             conn.commit()
             return updated_count
-        finally:
-            conn.close()
-
-    # ... (seu código atual)
-
-    def preview_vacation_mode(self, start_date, end_date):
-        """
-        (Compatibilidade Streamlit) Simula a lógica de Férias:
-        Busca transações no período e separa o que é Recorrente (protegido) do que é Pontual (férias).
-        """
-        conn = db_instance.get_connection()
-        try:
-            import pandas as pd
-            # 1. Busca candidatos dentro da janela
-            query = f"""
-                SELECT * FROM transactions 
-                WHERE date BETWEEN '{start_date}' AND '{end_date}'
-                AND (category != 'Férias' OR category IS NULL)
-                AND (category != '⛔ IGNORADO' OR category IS NULL)
-            """
-            candidates = pd.read_sql_query(query, conn)
-            
-            to_update = []
-            protected = []
-            
-            cursor = conn.cursor()
-            
-            for _, row in candidates.iterrows():
-                desc = row['description']
-                
-                # 2. O Teste de Recorrência
-                # Verifica se esta descrição aparece FORA da janela temporal selecionada
-                cursor.execute(f"""
-                    SELECT count(*) FROM transactions 
-                    WHERE description = ? 
-                    AND date NOT BETWEEN '{start_date}' AND '{end_date}'
-                """, (desc,))
-                
-                count_outside = cursor.fetchone()[0]
-                
-                item = {
-                    "hash_id": row['hash_id'],
-                    "Data": row['date'],
-                    "Descrição": desc,
-                    "Valor": row['amount'],
-                    "Categoria Atual": row['category']
-                }
-                
-                if count_outside > 0:
-                    protected.append(item)
-                else:
-                    to_update.append(item)
-                    
-            return pd.DataFrame(to_update), pd.DataFrame(protected)
-            
-        finally:
-            conn.close()
-
-    def apply_vacation_batch(self, hash_ids: list):
-        """(Compatibilidade Streamlit) Aplica a categoria 'Férias' em lote."""
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.executemany(
-                "UPDATE transactions SET category = 'Férias', is_manual = 1 WHERE hash_id = ?",
-                [(h,) for h in hash_ids]
-            )
-            conn.commit()
-            return cursor.rowcount
         finally:
             conn.close()

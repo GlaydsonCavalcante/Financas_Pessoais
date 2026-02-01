@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <h2 class="mb-4 text-center">📥 Central de Extratos</h2>
+            
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    
+                    <form action="{{ url_for('import_files') }}" method="POST" enctype="multipart/form-data" id="uploadForm">
+                        
+                        <div id="drop-zone" class="drop-zone mb-3">
+                            <div class="drop-zone-content">
+                                <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                                <h4>Arraste seus arquivos aqui</h4>
+                                <p class="text-muted">Extratos do Banco (CSV) ou Faturas (TXT)</p>
+                                <button type="button" class="btn btn-outline-primary btn-sm mt-2">Ou clique para selecionar</button>
+                            </div>
+                            <input type="file" name="files" id="fileInput" class="drop-zone-input" multiple accept=".csv,.txt" required>
+                        </div>
+
+                        <div id="file-list" class="list-group mb-4 d-none">
+                            </div>
+                        
+                        <div class="d-grid">
+                            <button class="btn btn-primary btn-lg" type="submit" id="submitBtn" disabled>
+                                <i class="fas fa-file-import me-2"></i> Processar Arquivos
+                            </button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+
+            {% if results %}
+            <div class="mt-5 animate-fade-in">
+                <h4 class="mb-3">📊 Relatório da Importação</h4>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card text-white bg-success h-100">
+                            <div class="card-body text-center">
+                                <h1 class="display-4 fw-bold">{{ results.saved }}</h1>
+                                <p class="mb-0">Novas Transações Salvas</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light h-100 border-secondary">
+                            <div class="card-body text-center">
+                                <h1 class="display-4 fw-bold text-secondary">{{ results.read }}</h1>
+                                <p class="mb-0 text-muted">Linhas Lidas</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if results.errors %}
+                <div class="alert alert-warning mt-4 shadow-sm">
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Atenção:</h5>
+                    <ul class="mb-0">
+                        {% for err in results.errors %}
+                        <li>{{ err }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('file-list');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // 1. Clique na zona aciona o input escondido
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    // 2. Efeitos visuais ao arrastar
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drop-zone--over');
+    });
+
+    ['dragleave', 'dragend'].forEach(type => {
+        dropZone.addEventListener(type, () => {
+            dropZone.classList.remove('drop-zone--over');
+        });
+    });
+
+    // 3. Soltar arquivos
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drop-zone--over');
+
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files; // Atribui os arquivos ao input
+            updateFileList();
+        }
+    });
+
+    // 4. Selecionar via clique
+    fileInput.addEventListener('change', updateFileList);
+
+    function updateFileList() {
+        fileList.innerHTML = '';
+        const files = fileInput.files;
+
+        if (files.length > 0) {
+            fileList.classList.remove('d-none');
+            submitBtn.disabled = false;
+            
+            Array.from(files).forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    <div>
+                        <i class="fas fa-file-alt text-primary me-2"></i>
+                        <strong>${file.name}</strong>
+                        <small class="text-muted ms-2">(${formatBytes(file.size)})</small>
+                    </div>
+                    <i class="fas fa-check-circle text-success"></i>
+                `;
+                fileList.appendChild(item);
+            });
+        } else {
+            fileList.classList.add('d-none');
+            submitBtn.disabled = true;
+        }
+    }
+
+    function formatBytes(bytes, decimals = 2) {
+        if (!+bytes) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    }
+</script>
+{% endblock %}

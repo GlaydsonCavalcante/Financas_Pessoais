@@ -1,4 +1,17 @@
-# Financas_Pessoais
+# Financas_Pessoais - Flask
+finance_system/
+├── app.py                <-- (Novo) Controlador Flask
+├── templates/            <-- (Novo) HTMLs
+│   ├── base.html         <-- Layout padrão (menu, rodapé)
+│   ├── home.html         <-- Visão geral
+│   └── classify.html     <-- A tela de classificação
+├── static/               <-- (Novo) CSS e JS
+│   └── style.css
+├── src/                  <-- (Mantém igual!)
+└── db/                   <-- (Mantém igual)
+
+
+# Financas_Pessoais - Streamlit
 Robô para leitura de extratos e composição de orçamento mensal
 
 finance_system/

@@ -1,0 +1,119 @@
+/* static/style.css */
+
+:root {
+    --primary-color: #0d6efd;
+    --bg-light: #f8f9fa;
+    --text-dark: #212529;
+    --income-color: #198754;
+    --expense-color: #dc3545;
+}
+
+body {
+    background-color: var(--bg-light);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Sidebar */
+.sidebar {
+    min-height: 100vh;
+    background: linear-gradient(180deg, #212529 0%, #343a40 100%);
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+
+.nav-link {
+    color: rgba(255,255,255,.7);
+    margin: 4px 16px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.nav-link:hover, .nav-link.active {
+    color: #fff;
+    background-color: rgba(255,255,255,.1);
+    transform: translateX(5px);
+}
+
+/* Cards e Paineis */
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+/* Tabelas */
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.amount-positive { color: var(--income-color); font-weight: 600; }
+.amount-negative { color: var(--expense-color); font-weight: 600; }
+
+/* Utilitários de Classificação */
+.search-container {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    margin-bottom: 20px;
+}
+
+.batch-toolbar {
+    background: #e9ecef;
+    padding: 10px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+/* Scroll suave para tabelas grandes */
+.table-responsive {
+    scrollbar-width: thin;
+}
+
+/* Adicione ao final do arquivo */
+
+/* --- Drag & Drop Zone --- */
+.drop-zone {
+    width: 100%;
+    min-height: 200px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border: 2px dashed #0d6efd; /* Borda azul tracejada */
+    border-radius: 10px;
+    background-color: #f8faff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+/* Quando o mouse passa ou arrasta arquivo por cima */
+.drop-zone:hover, .drop-zone--over {
+    background-color: #e2e6ea;
+    border-color: #0b5ed7;
+    transform: scale(1.01);
+}
+
+.drop-zone-content {
+    pointer-events: none; /* Garante que o clique passe para a div pai */
+}
+
+/* Esconde o input original feio, mas deixa ele clicável via JS */
+.drop-zone-input {
+    display: none;
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
