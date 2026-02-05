@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 import pandas as pd
 from datetime import date, timedelta
 import json
+from finance_system.src.database.budget_service import BudgetService
 
 # Imports dos seus Serviços
 from src.services.categorizer_service import CategorizerService
@@ -16,6 +17,7 @@ app.secret_key = 'chave_super_secreta_glaydson'
 cat_service = CategorizerService()
 imp_service = ImporterService()
 loan_service = LoanService()
+budget_service = BudgetService()
 
 CATEGORY_IGNORE = "⛔ IGNORADO"
 
@@ -388,6 +390,46 @@ def dashboard():
         start_date=start, 
         end_date=end
     )
+
+# === 5. METAS E ORÇAMENTO ===
+@app.route('/goals', methods=['GET', 'POST'])
+def goals():
+    current_year = date.today().year
+    
+    # Filtro de Ano (opcional para o futuro)
+    year = int(request.args.get('year', current_year))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'set_goal':
+            # Salva a Meta
+            cat = request.form.get('category')
+            val = float(request.form.get('amount'))
+            budget_service.set_annual_goal(year, cat, val)
+            flash(f"Meta de {cat} atualizada!", "success")
+            
+        elif action == 'add_provision':
+            # Movimenta o Cofre
+            cat = request.form.get('category')
+            val = float(request.form.get('amount'))
+            memo = request.form.get('memo')
+            # Se for saída (resgate), o valor vem negativo do form ou tratamos aqui?
+            # Vamos assumir que o usuário digita negativo se for tirar, ou criamos lógica de botão.
+            # Por simplicidade: Valor positivo = Guarda. Valor negativo = Tira.
+            budget_service.add_provision(cat, val, memo)
+            flash(f"Provisão de {cat} registrada.", "info")
+            
+        return redirect(url_for('goals', year=year))
+
+    # Busca dados calculados
+    summary = budget_service.get_budget_summary(year)
+    
+    # Lista de categorias para o dropdown (reaproveita serviço existente)
+    cats_df = cat_service.get_unique_categories()
+    all_categories = cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
+    
+    return render_template('goals.html', summary=summary, all_categories=all_categories, year=year)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

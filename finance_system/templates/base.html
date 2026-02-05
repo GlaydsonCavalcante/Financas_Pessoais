@@ -43,6 +43,9 @@
                     <a class="nav-link {{ 'active' if request.endpoint == 'loans' }}" href="{{ url_for('loans') }}">
                         <i class="fas fa-university me-2"></i> Empréstimos
                     </a>
+                    <a class="nav-link {{ 'active' if request.endpoint == 'goals' }}" href="{{ url_for('goals') }}">
+                        <i class="fas fa-bullseye me-2"></i> Metas Anuais
+                    </a>
                 </nav>
             </div> <div class="col-md-10 content">
                 {% with messages = get_flashed_messages(with_categories=true) %}

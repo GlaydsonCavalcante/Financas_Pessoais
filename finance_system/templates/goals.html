@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>🎯 Metas Anuais ({{ year }})</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newGoalModal">
+        <i class="fas fa-plus me-2"></i> Definir Meta
+    </button>
+</div>
+
+<div class="row">
+    {% for item in summary %}
+    <div class="col-md-6 mb-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="card-title mb-0 fw-bold text-dark">{{ item.categoria }}</h5>
+                    <span class="badge bg-light text-dark border">
+                        Meta: R$ {{ "{:,.0f}".format(item.meta).replace(',', '.') }}
+                    </span>
+                </div>
+
+                <div class="progress mb-2" style="height: 25px;">
+                    <div class="progress-bar bg-primary" role="progressbar" 
+                         style="width: {{ (item.realizado / item.meta * 100) if item.meta > 0 else 0 }}%" 
+                         title="Pago: R$ {{ item.realizado }}">
+                        {% if item.realizado > 0 %}💸{% endif %}
+                    </div>
+                    <div class="progress-bar bg-info opacity-75" role="progressbar" 
+                         style="width: {{ (item.guardado / item.meta * 100) if item.meta > 0 else 0 }}%" 
+                         title="No Cofre: R$ {{ item.guardado }}">
+                        {% if item.guardado > 0 %}🏦{% endif %}
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between small text-muted mb-3">
+                    <span>
+                        Pago: <strong>{{ "{:,.0f}".format(item.realizado).replace(',', '.') }}</strong> + 
+                        Cofre: <strong>{{ "{:,.0f}".format(item.guardado).replace(',', '.') }}</strong>
+                    </span>
+                    <span>
+                        Total: <strong>{{ "{:,.0f}".format(item.total_coberto).replace(',', '.') }}</strong>
+                    </span>
+                </div>
+
+                {% if item.falta > 0 %}
+                <div class="alert alert-warning py-2 d-flex justify-content-between align-items-center">
+                    <span>
+                        <i class="fas fa-exclamation-circle me-1"></i>
+                        Falta: R$ {{ "{:,.0f}".format(item.falta).replace(',', '.') }}
+                    </span>
+                    <strong class="text-dark">
+                        Cota Mês: R$ {{ "{:,.0f}".format(item.cota_mensal).replace(',', '.') }}
+                    </strong>
+                </div>
+                {% else %}
+                <div class="alert alert-success py-2 text-center">
+                    <i class="fas fa-check-circle me-2"></i> Meta 100% Garantida!
+                </div>
+                {% endif %}
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success flex-grow-1" 
+                            onclick="openProvisionModal('{{ item.categoria }}', 'in')">
+                        <i class="fas fa-piggy-bank me-1"></i> Guardar
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" 
+                            onclick="openProvisionModal('{{ item.categoria }}', 'out')"
+                            title="Usar dinheiro do cofre para pagar">
+                        <i class="fas fa-money-bill-wave"></i> Usar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12 text-center py-5">
+        <h3 class="text-muted">Nenhuma meta definida para {{ year }}.</h3>
+        <p>Clique em "Definir Meta" para começar seu planejamento.</p>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="modal fade" id="newGoalModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('goals') }}" method="POST">
+                <input type="hidden" name="action" value="set_goal">
+                <div class="modal-header">
+                    <h5 class="modal-title">Definir Orçamento Anual</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Categoria</label>
+                        <select name="category" class="form-select" required>
+                            {% for cat in all_categories %}
+                            <option value="{{ cat }}">{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Valor Anual (R$)</label>
+                        <input type="number" step="1" name="amount" class="form-control" required placeholder="Ex: 1200">
+                        <div class="form-text">Quanto você pretende gastar em todo o ano de {{ year }}?</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Salvar Meta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="provisionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('goals') }}" method="POST">
+                <input type="hidden" name="action" value="add_provision">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="provTitle">Movimentar Cofre</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" id="provCat">
+                    
+                    <div class="alert alert-info" id="provTypeInfo"></div>
+
+                    <div class="mb-3">
+                        <label>Valor (R$)</label>
+                        <input type="number" step="1" name="amount" id="provAmount" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Local / Motivo</label>
+                        <input type="text" name="memo" class="form-control" placeholder="Ex: Nubank Caixinha ou Pagamento IPVA">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openProvisionModal(category, type) {
+        document.getElementById('provCat').value = category;
+        const modal = new bootstrap.Modal(document.getElementById('provisionModal'));
+        const title = document.getElementById('provTitle');
+        const info = document.getElementById('provTypeInfo');
+        const input = document.getElementById('provAmount');
+
+        if (type === 'in') {
+            title.innerText = "🏦 Guardar no Cofre (" + category + ")";
+            info.innerText = "Isso aumentará seu saldo provisionado. O valor será deduzido da meta a cumprir.";
+            input.value = "";
+            input.setAttribute('min', '0');
+        } else {
+            title.innerText = "💸 Baixar do Cofre (" + category + ")";
+            info.innerText = "Use isso quando pagar a conta. Digite o valor NEGATIVO (ex: -100).";
+            input.value = "-";
+        }
+        modal.show();
+    }
+</script>
+{% endblock %}
