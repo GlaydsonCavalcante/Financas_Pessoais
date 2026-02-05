@@ -19,9 +19,14 @@
         <div class="row">
             <div class="col-md-2 sidebar p-3">
                 <h4 class="mb-4">💰 Finanças</h4>
+                
                 <nav class="nav flex-column">
                     <a class="nav-link {{ 'active' if request.endpoint == 'home' }}" href="{{ url_for('home') }}">
-                        <i class="fas fa-home me-2"></i> Dashboard
+                        <i class="fas fa-home me-2"></i> Início
+                    </a>
+
+                    <a class="nav-link {{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">
+                        <i class="fas fa-chart-pie me-2"></i> Dashboard
                     </a>
                     
                     <a class="nav-link {{ 'active' if request.endpoint == 'import_files' }}" href="{{ url_for('import_files') }}">
@@ -39,9 +44,7 @@
                         <i class="fas fa-university me-2"></i> Empréstimos
                     </a>
                 </nav>
-            </div>
-            
-            <div class="col-md-10 content">
+            </div> <div class="col-md-10 content">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
                         {% for category, message in messages %}

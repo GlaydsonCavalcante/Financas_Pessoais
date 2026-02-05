@@ -15,12 +15,14 @@
             📝 Um a Um
         </button>
     </li>
+    
     <li class="nav-item">
         <button class="nav-link {{ 'active' if active_tab == 'batch' else '' }}" 
                 id="batch-tab" data-bs-toggle="tab" data-bs-target="#batch-pane" type="button">
             📦 Em Lote (Rápido)
         </button>
     </li>
+    
     <li class="nav-item">
         <button class="nav-link {{ 'active' if active_tab == 'vacation' else '' }}" 
                 id="vacation-tab" data-bs-toggle="tab" data-bs-target="#vacation-pane" type="button">
@@ -90,12 +92,13 @@
                         {% if parcel_info %}
                         <div class="alert alert-warning border-warning mb-3">
                             <h6><i class="fas fa-puzzle-piece me-2"></i>Parcela {{ parcel_info.current }}/{{ parcel_info.total }}</h6>
-                            <small>Unificar: <strong>R$ {{ "%.2f"|format(parcel_info.total_value) }}</strong>.</small>
+                            <small>Unificar cria lançamento único de <strong>R$ {{ "%.2f"|format(parcel_info.total_value) }}</strong>.</small>
                         </div>
                         {% endif %}
 
                         <form action="{{ url_for('classify_action') }}" method="POST">
                             <input type="hidden" name="description" value="{{ current_item.description }}">
+                            
                             {% if parcel_info %}
                                 <input type="hidden" name="first_hash" value="{{ transactions[0].hash_id }}">
                                 <input type="hidden" name="amount" value="{{ transactions[0].amount }}">
@@ -112,21 +115,30 @@
                                         <option value="{{ cat }}">{{ cat }}</option>
                                     {% endfor %}
                                 </select>
-                                <input type="text" name="new_category" id="newCatInput" class="form-control d-none" placeholder="Nome da categoria...">
+                                <input type="text" name="new_category" id="newCatInput" class="form-control d-none" placeholder="Digite o nome...">
                             </div>
 
                             <div class="form-check mb-4">
                                 <input class="form-check-input" type="checkbox" name="apply_rule" id="ruleCheck" checked>
-                                <label class="form-check-label" for="ruleCheck">Criar regra?</label>
+                                <label class="form-check-label" for="ruleCheck">
+                                    Aplicar regra para o futuro?
+                                </label>
                             </div>
 
                             <div class="d-grid gap-2">
                                 {% if parcel_info %}
-                                    <button type="submit" name="action_type" value="unify" class="btn btn-warning fw-bold">⚡ Unificar</button>
+                                    <button type="submit" name="action_type" value="unify" class="btn btn-warning fw-bold">
+                                        ⚡ Unificar & Classificar
+                                    </button>
                                 {% else %}
-                                    <button type="submit" name="action_type" value="save" class="btn btn-primary btn-lg">💾 Salvar</button>
+                                    <button type="submit" name="action_type" value="save" class="btn btn-primary btn-lg">
+                                        💾 Salvar
+                                    </button>
                                 {% endif %}
-                                <button type="submit" name="action_type" value="ignore" class="btn btn-outline-danger">⛔ Ignorar</button>
+                                
+                                <button type="submit" name="action_type" value="ignore" class="btn btn-outline-danger">
+                                    ⛔ Ignorar Item
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -136,7 +148,8 @@
         
         {% else %}
         <div class="text-center py-5">
-            <h3 class="text-muted">🎉 Tudo limpo!</h3>
+            <h3 class="text-muted">🎉 Tudo limpo por aqui!</h3>
+            <p>Nenhuma pendência individual encontrada.</p>
         </div>
         {% endif %}
     </div>
@@ -152,18 +165,31 @@
                             <input type="text" id="batchFilter" class="form-control" placeholder="Filtrar descrições..." onkeyup="filterBatchTable()">
                         </div>
                     </div>
+                    
                     <div class="col-md-4">
                         <div class="input-group">
-                            <span class="input-group-text bg-light">Ordenar:</span>
+                            <span class="input-group-text bg-light">Ordenar por:</span>
                             <select class="form-select" onchange="window.location.href=this.value">
-                                <option value="{{ url_for('classify', tab='batch', sort='description', dir='asc') }}" {% if current_sort == 'description' %}selected{% endif %}>Nome (A-Z)</option>
-                                <option value="{{ url_for('classify', tab='batch', sort='qtd', dir='desc') }}" {% if current_sort == 'qtd' %}selected{% endif %}>Quantidade</option>
-                                <option value="{{ url_for('classify', tab='batch', sort='amount', dir='asc') }}" {% if current_sort == 'amount' %}selected{% endif %}>Valor</option>
+                                <option value="{{ url_for('classify', tab='batch', sort='description', dir='asc') }}" 
+                                        {% if current_sort == 'description' %}selected{% endif %}>
+                                    Nome (A-Z)
+                                </option>
+                                <option value="{{ url_for('classify', tab='batch', sort='qtd', dir='desc') }}" 
+                                        {% if current_sort == 'qtd' %}selected{% endif %}>
+                                    Quantidade (Maior Primeiro)
+                                </option>
+                                <option value="{{ url_for('classify', tab='batch', sort='amount', dir='asc') }}" 
+                                        {% if current_sort == 'amount' %}selected{% endif %}>
+                                    Valor Médio (Menor Primeiro)
+                                </option>
                             </select>
                         </div>
                     </div>
+
                     <div class="col-md-3 text-end align-self-center">
-                        <span class="badge bg-light text-dark border"><span id="visibleCount">{{ batch_data|length }}</span> visíveis</span>
+                        <span class="badge bg-light text-dark border">
+                            <span id="visibleCount">{{ batch_data|length }}</span> grupos visíveis
+                        </span>
                     </div>
                 </div>
 
@@ -175,7 +201,9 @@
                         <table class="table table-hover align-middle" id="batchTable">
                             <thead class="table-light sticky-top">
                                 <tr>
-                                    <th style="width: 40px;"><input type="checkbox" class="form-check-input" onclick="toggleAll(this)"></th>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" onclick="toggleAll(this)">
+                                    </th>
                                     <th>Descrição</th>
                                     <th>Qtd</th>
                                     <th>Valor Médio</th>
@@ -184,10 +212,14 @@
                             <tbody>
                                 {% for row in batch_data %}
                                 <tr>
-                                    <td><input type="checkbox" name="selected_descriptions" value="{{ row.description }}" class="form-check-input batch-check"></td>
+                                    <td>
+                                        <input type="checkbox" name="selected_descriptions" value="{{ row.description }}" class="form-check-input batch-check">
+                                    </td>
                                     <td class="fw-bold text-dark desc-cell">{{ row.description }}</td>
                                     <td><span class="badge bg-secondary">{{ row.qtd }}</span></td>
-                                    <td class="{{ 'text-danger' if row.avg_amount < 0 else 'text-success' }}">R$ {{ "%.2f"|format(row.avg_amount) }}</td>
+                                    <td class="{{ 'text-danger' if row.avg_amount < 0 else 'text-success' }}">
+                                        R$ {{ "%.2f"|format(row.avg_amount) }}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -205,16 +237,20 @@
                                         <option value="{{ cat }}">{{ cat }}</option>
                                     {% endfor %}
                                 </select>
-                                <input type="text" name="new_batch_category" id="newBatchCatInput" class="form-control mt-2 d-none border-primary" placeholder="Nome da nova categoria...">
+                                <input type="text" name="new_batch_category" id="newBatchCatInput" class="form-control mt-2 d-none border-primary" placeholder="Digite o nome da nova categoria...">
                             </div>
+
                             <div class="align-self-center pt-4">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="create_rule_batch" id="batchRule" checked>
                                     <label class="form-check-label small" for="batchRule">Criar Regras</label>
                                 </div>
                             </div>
+                            
                             <div class="align-self-center pt-3">
-                                <button type="submit" class="btn btn-success">🚀 Aplicar</button>
+                                <button type="submit" class="btn btn-success">
+                                    🚀 Aplicar em Massa
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -230,11 +266,13 @@
             </div>
             <div class="card-body">
                 <p class="text-muted">
-                    Selecione as datas. Itens pontuais serão marcados como <strong>"Férias"</strong>. Recorrentes serão preservados.
+                    Selecione as datas da sua viagem. O sistema irá sugerir categorizar como <strong>"Férias"</strong> 
+                    tudo o que aconteceu nesse período, <u>exceto</u> contas recorrentes (aluguel, luz, assinaturas).
                 </p>
 
                 <form action="{{ url_for('classify') }}" method="GET" class="row g-3 align-items-end mb-4">
                     <input type="hidden" name="tab" value="vacation">
+                    
                     <div class="col-md-3">
                         <label class="form-label fw-bold">Data Início</label>
                         <input type="date" name="vac_start" class="form-control" required value="{{ vac_start }}">
@@ -257,14 +295,18 @@
                     <form action="{{ url_for('vacation_apply') }}" method="POST">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="text-success">🎯 Candidatos a Férias ({{ vacation_candidates|length }})</h5>
-                            <button type="submit" class="btn btn-success fw-bold">Confirmar Selecionados</button>
+                            <button type="submit" class="btn btn-success fw-bold">
+                                Confirmar Selecionados
+                            </button>
                         </div>
                         
                         <div class="table-responsive mb-4" style="max-height: 400px;">
                             <table class="table table-hover align-middle">
                                 <thead class="table-light sticky-top">
                                     <tr>
-                                        <th style="width: 40px;"><input type="checkbox" class="form-check-input" checked onclick="toggleAllVacation(this)"></th>
+                                        <th style="width: 40px;">
+                                            <input type="checkbox" class="form-check-input" checked onclick="toggleAllVacation(this)">
+                                        </th>
                                         <th>Data</th>
                                         <th>Descrição</th>
                                         <th>Valor</th>
@@ -274,7 +316,9 @@
                                 <tbody>
                                     {% for row in vacation_candidates %}
                                     <tr>
-                                        <td><input type="checkbox" name="selected_hashes" value="{{ row.hash_id }}" class="form-check-input vac-check" checked></td>
+                                        <td>
+                                            <input type="checkbox" name="selected_hashes" value="{{ row.hash_id }}" class="form-check-input vac-check" checked>
+                                        </td>
                                         <td>{{ row.Data }}</td>
                                         <td class="fw-bold">{{ row.Descrição }}</td>
                                         <td class="text-danger">R$ {{ "%.2f"|format(row.Valor) }}</td>
@@ -286,15 +330,20 @@
                         </div>
                     </form>
                 {% else %}
-                    <div class="alert alert-warning">Nenhuma transação pontual encontrada neste período.</div>
+                    <div class="alert alert-warning">
+                        Nenhuma transação pontual encontrada neste período. Talvez já estejam classificadas?
+                    </div>
                 {% endif %}
 
                 {% if vacation_protected %}
                     <div class="mt-4">
-                        <h6 class="text-muted"><i class="fas fa-shield-alt me-2"></i>Itens Protegidos (Recorrentes)</h6>
+                        <h6 class="text-muted"><i class="fas fa-shield-alt me-2"></i>Itens Protegidos (Recorrentes detectados)</h6>
+                        <small class="text-muted">Estes itens existem fora da data da viagem, então o sistema <strong>não</strong> selecionou automaticamente.</small>
                         <div class="table-responsive mt-2" style="max-height: 200px;">
                             <table class="table table-sm table-bordered text-muted">
-                                <thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead>
+                                <thead>
+                                    <tr><th>Data</th><th>Descrição</th><th>Valor</th></tr>
+                                </thead>
                                 <tbody>
                                     {% for row in vacation_protected %}
                                     <tr>
@@ -317,66 +366,111 @@
 
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
 <script>
-    // 1. Tom Select
+    /**
+     * 1. Inicializa o Tom Select (Busca Inteligente)
+     * Transforma o dropdown da Aba 1 em um campo pesquisável.
+     */
     document.addEventListener("DOMContentLoaded", function() {
         var selectEl = document.getElementById('searchableSelect');
         if (selectEl) {
             new TomSelect(selectEl, {
-                create: false,
-                sortField: { field: "text", direction: "asc" },
+                create: false, // Impede criar opções novas na busca
+                sortField: {
+                    field: "text",
+                    direction: "asc"
+                },
+                // Ao selecionar, recarrega a página com ?item=...
                 onChange: function(value) {
-                    if (value) window.location.href = '?item=' + encodeURIComponent(value);
+                    if (value) {
+                        window.location.href = '?item=' + encodeURIComponent(value);
+                    }
                 }
             });
         }
     });
 
-    // 2. Nova Cat (Single)
+    /**
+     * 2. Controle de "Nova Categoria" (Aba 1)
+     * Mostra/Esconde o input de texto se o usuário selecionar "NEW".
+     */
     function toggleNewCat() {
         const select = document.getElementById('catSelect');
         const input = document.getElementById('newCatInput');
+        
         if (select.value === 'NEW') {
-            input.classList.remove('d-none'); input.required = true; input.focus();
+            input.classList.remove('d-none');
+            input.required = true;
+            input.focus();
         } else {
-            input.classList.add('d-none'); input.required = false;
+            input.classList.add('d-none');
+            input.required = false;
         }
     }
 
-    // 3. Nova Cat (Batch)
+    /**
+     * 3. Controle de "Nova Categoria" (Aba 2 - Lote)
+     * Mesma lógica, mas para o formulário de lote.
+     */
     function toggleNewCatBatch() {
         const select = document.getElementById('batchCatSelect');
         const input = document.getElementById('newBatchCatInput');
+        
         if (select.value === 'NEW') {
-            input.classList.remove('d-none'); input.required = true; input.focus();
+            input.classList.remove('d-none');
+            input.required = true;
+            input.focus();
         } else {
-            input.classList.add('d-none'); input.required = false; input.value = '';
+            input.classList.add('d-none');
+            input.required = false;
+            input.value = '';
         }
     }
 
-    // 4. Filtro Batch
+    /**
+     * 4. Filtro Instantâneo da Tabela de Lote
+     * Filtra as linhas da tabela HTML enquanto o usuário digita, sem recarregar.
+     */
     function filterBatchTable() {
         const input = document.getElementById('batchFilter');
         const filter = input.value.toLowerCase();
-        const tr = document.getElementById('batchTable').getElementsByTagName('tr');
+        const table = document.getElementById('batchTable');
+        const tr = table.getElementsByTagName('tr');
         let visible = 0;
+
+        // Começa do 1 para pular o cabeçalho
         for (let i = 1; i < tr.length; i++) {
             const td = tr[i].getElementsByClassName('desc-cell')[0];
             if (td) {
-                if (td.innerText.toLowerCase().indexOf(filter) > -1) { tr[i].style.display = ""; visible++; }
-                else { tr[i].style.display = "none"; }
+                const txtValue = td.textContent || td.innerText;
+                if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                    tr[i].style.display = ""; // Mostra
+                    visible++;
+                } else {
+                    tr[i].style.display = "none"; // Esconde
+                }
             }
         }
+        // Atualiza o contador visual
         document.getElementById('visibleCount').innerText = visible;
     }
 
-    // 5. Toggle All (Batch)
+    /**
+     * 5. Selecionar Todos (Checkbox Mestre - Lote)
+     * Marca apenas as linhas que estão visíveis (respeita o filtro).
+     */
     function toggleAll(source) {
-        document.querySelectorAll('.batch-check').forEach(cb => {
-            if(cb.closest('tr').style.display !== 'none') cb.checked = source.checked;
+        const checkboxes = document.querySelectorAll('.batch-check');
+        checkboxes.forEach(cb => {
+            // Só marca se a linha (tr) não estiver oculta (display: none)
+            if(cb.closest('tr').style.display !== 'none') {
+                cb.checked = source.checked;
+            }
         });
     }
 
-    // 6. Toggle All (Vacation)
+    /**
+     * 6. Selecionar Todos (Checkbox Mestre - Férias)
+     */
     function toggleAllVacation(source) {
         document.querySelectorAll('.vac-check').forEach(cb => {
             cb.checked = source.checked;
