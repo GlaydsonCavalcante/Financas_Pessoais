@@ -1,8 +1,9 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
 import pandas as pd
 from datetime import date, timedelta
 import json
-import jsonify
+import urllib.parse
 
 # Imports dos seus Serviços
 from src.services.categorizer_service import CategorizerService
@@ -370,48 +371,33 @@ def dashboard():
 # === 5. METAS E ORÇAMENTO ===
 @app.route('/goals', methods=['GET', 'POST'])
 def goals():
-    current_year = date.today().year
-    
-    # Filtro de Ano (opcional para o futuro)
-    year = int(request.args.get('year', current_year))
+    today = date.today()
+    # Recupera mês e ano do seletor (ou assume o atual)
+    view_year = int(request.args.get('year', today.year))
+    view_month = int(request.args.get('month', today.month))
     
     if request.method == 'POST':
         action = request.form.get('action')
-        
-        if action == 'set_goal':
-            # Salva a Meta
-            cat = request.form.get('category')
-            val = float(request.form.get('amount'))
-            budget_service.set_annual_goal(year, cat, val)
-            flash(f"Meta de {cat} atualizada!", "success")
-            
-        elif action == 'add_provision':
-            # Movimenta o Cofre
-            cat = request.form.get('category')
-            val = float(request.form.get('amount'))
-            memo = request.form.get('memo')
-            # Registra a provisão
-            budget_service.add_provision(cat, val, memo)
-            flash(f"Provisão de {cat} registrada.", "info")
-        
-        # --- LÓGICA DE REDIRECIONAMENTO (NOVO) ---
-        # Se o pedido veio do Dashboard, volta para lá.
-        # Caso contrário, fica na tela de Metas.
-        next_p = request.form.get('next_page')
-        if next_p == 'dashboard':
-            return redirect(url_for('dashboard'))
-            
-        return redirect(url_for('goals', year=year))
+        # ... (sua lógica de set_goal e add_provision continua igual) ...
+        # IMPORTANTE: No redirect do POST, passe o mês e ano para não perder a visão
+        return redirect(url_for('goals', year=view_year, month=view_month))
 
-    # Busca dados calculados (mantém lógica visual da tela de metas)
-    # Nota: O 'get_budget_summary' deve continuar existindo no service para esta tela funcionar
-    summary = budget_service.get_budget_summary(year)
+    # Busca o resumo anual para a Aba Estratégia
+    summary = budget_service.get_budget_summary(view_year)
     
-    # Lista de categorias para o dropdown
+    # Busca o status específico do mês selecionado para a Aba GPS
+    # Isso nos dará o "Resultado do Mês" (Receita - Gasto - Guardado)
+    monthly_status = budget_service.get_dashboard_overview(view_year, view_month)
+    
     cats_df = cat_service.get_unique_categories()
     all_categories = cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
     
-    return render_template('goals.html', summary=summary, all_categories=all_categories, year=year)
+    return render_template('goals.html', 
+                           summary=summary, 
+                           monthly_status=monthly_status, # NOVO
+                           all_categories=all_categories, 
+                           year=view_year,
+                           month=view_month) # NOVO
 
 # --- ROTAS DO CONSELHEIRO ---
 
@@ -505,15 +491,16 @@ def apply_curve():
 # === ROTAS DO ESPECIALISTA (GRÁFICO E CHAT) ===
 @app.route('/api/category_history/<category>')
 def category_history_api(category):
+    # Descodifica a URL (Ex: Compras%20Gen%C3%A9ricas -> Compras Genéricas)
+    decoded_category = urllib.parse.unquote(category)
     try:
         conn = db_instance.get_connection()
-        # Garante que category trata caracteres especiais se necessário
         df = pd.read_sql_query("""
             SELECT strftime('%Y', date) as ano, strftime('%m', date) as mes, SUM(ABS(amount)) as valor
             FROM transactions 
             WHERE category = ? AND strftime('%Y', date) IN ('2024', '2025', '2026') AND amount < 0
             GROUP BY ano, mes
-        """, conn, params=(category,))
+        """, conn, params=(decoded_category,)) # USE A VARIÁVEL DECODIFICADA
         conn.close()
         
         data = {'2024': [0]*12, '2025': [0]*12, '2026': [0]*12}

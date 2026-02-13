@@ -117,67 +117,119 @@
     </div>
 
     <div class="tab-pane fade" id="monthly-pane" role="tabpanel">
-        <div class="alert alert-info shadow-sm mb-4">
-            <i class="fas fa-compass me-2"></i>
-            <strong>Tático Mensal:</strong> Valores disponíveis para gastar hoje, considerando o saldo anual restante.
-        </div>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>Categoria</th>
-                        <th class="text-center">Disponível no Mês</th>
-                        <th class="text-end">Ação</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in summary %}
-                    <tr>
-                        <td class="fw-bold">{{ item.categoria }}</td>
-                        <td class="text-center">
-                            <span class="badge {{ 'bg-success text-success' if (item.cota_mensal is defined and item.cota_mensal > 0) else 'bg-danger text-danger' }} bg-opacity-10 border px-3 py-2">
-                                R$ {{ "{:,.0f}".format(item.cota_mensal if item.cota_mensal is defined else 0) }}
-                            </span>
-                        </td>
-                        <td class="text-end">
-                            <button class="btn btn-sm btn-outline-success" onclick="openProvisionModal('{{ item.categoria }}')">
-                                <i class="fas fa-piggy-bank"></i> Guardar
-                            </button>
-                        </td>
-                    </tr>
+    
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body bg-light d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-calendar-alt me-2"></i>Período de Referência</h5>
+            <form action="{{ url_for('goals') }}" method="GET" class="d-flex gap-2">
+                <input type="hidden" name="year" value="{{ year }}">
+                <select name="month" class="form-select form-select-sm" style="width: 150px;" onchange="this.form.submit()">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {{ 'selected' if m == month }}>
+                        {{ ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][m-1] }}
+                    </option>
                     {% endfor %}
-                </tbody>
-            </table>
+                </select>
+                <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="2025" {{ 'selected' if year == 2025 }}>2025</option>
+                    <option value="2026" {{ 'selected' if year == 2026 }}>2026</option>
+                </select>
+            </form>
         </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-primary text-white">
+                <div class="card-body text-center">
+                    <small class="text-uppercase opacity-75">Receita Líquida (Mês)</small>
+                    <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.income) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm {{ 'bg-danger' if monthly_status.kpis.cash_burn < 0 else 'bg-success' }} text-white">
+                <div class="card-body text-center">
+                    <small class="text-uppercase opacity-75">Resultado de Caixa (Realizado)</small>
+                    <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.cash_burn) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-dark text-white">
+                <div class="card-body text-center">
+                    <small class="text-uppercase opacity-75">Margem GPS (Disponível)</small>
+                    <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.economic_result) }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive bg-white rounded shadow-sm">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th>Categoria</th>
+                    <th class="text-center">Gasto Real</th>
+                    <th class="text-center">Cota GPS (Alvo)</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-end">Ação</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in monthly_status.rows %}
+                <tr>
+                    <td class="fw-bold">{{ row.category }}</td>
+                    <td class="text-center">R$ {{ "{:,.0f}".format(row.realizado_mes) }}</td>
+                    <td class="text-center text-muted">R$ {{ "{:,.0f}".format(row.cota_mensal) }}</td>
+                    <td class="text-center">
+                        {% if row.is_alert %}
+                        <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i> Acima da Cota</span>
+                        {% else %}
+                        <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> Sob Controle</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-success" onclick="openProvisionModal('{{ row.category }}')">
+                            <i class="fas fa-piggy-bank me-1"></i> Guardar
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
 <div class="modal fade" id="specialistModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content h-100">
+        <div class="modal-content" style="height: 85vh;">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title"><i class="fas fa-microscope me-2"></i>Análise: <span id="specialistCatName"></span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-0">
                 <div class="row g-0 h-100">
-                    <div class="col-lg-7 p-4 border-end">
+                    <div class="col-lg-8 p-4 border-end bg-white">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="fw-bold">📊 Histórico 3 Anos</h6>
+                            <h6 class="fw-bold text-uppercase" style="letter-spacing: 1px;">📊 Histórico Comparativo (3 Anos)</h6>
                             <form action="{{ url_for('goals') }}" method="POST" class="d-flex gap-2">
                                 <input type="hidden" name="action" value="set_goal">
                                 <input type="hidden" name="year" value="{{ year }}">
                                 <input type="hidden" name="category" id="editCatInput">
                                 <div class="input-group input-group-sm">
-                                    <span class="input-group-text">Meta</span>
-                                    <input type="number" name="amount" id="editAmountInput" class="form-control" style="width: 100px;">
+                                    <span class="input-group-text bg-primary text-white">Meta</span>
+                                    <input type="number" name="amount" id="editAmountInput" class="form-control" style="width: 110px;">
                                     <button class="btn btn-primary" type="submit">Salvar</button>
                                 </div>
                             </form>
                         </div>
-                        <div style="height: 400px; width: 100%;"><canvas id="categoryChart"></canvas></div>
+                        <div style="position: relative; height: 65vh; width: 100%;">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
                     </div>
-                    <div class="col-lg-5 d-flex flex-column bg-light" style="height: 600px;">
+                    
+                    <div class="col-lg-4 d-flex flex-column bg-light">
                         <div class="p-3 border-bottom bg-white">
                             <h6 class="mb-0 fw-bold text-success"><i class="fas fa-robot me-2"></i>Consultor Especialista</h6>
                         </div>
@@ -238,6 +290,20 @@
 let myChart = null;
 let currentCategory = '';
 
+// Lógica de Retentativa para a IA
+async function fetchWithRetry(url, options, retries = 4) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            let response = await fetch(url, options);
+            if (response.ok) return await response.json();
+        } catch (err) {
+            if (i === retries - 1) throw err;
+            console.log(`Tentativa ${i + 1} falhou, tentando novamente...`);
+            await new Promise(res => setTimeout(res, 2000));
+        }
+    }
+}
+
 function openProvisionModal(category) {
     document.getElementById('provCat').value = category;
     new bootstrap.Modal(document.getElementById('provisionModal')).show();
@@ -250,13 +316,18 @@ function openSpecialist(category, currentMeta) {
     document.getElementById('editAmountInput').value = currentMeta;
     
     new bootstrap.Modal(document.getElementById('specialistModal')).show();
-    loadChart(category, currentMeta/12); // Passa meta mensal estimada
+    loadChart(category, currentMeta/12); 
     loadChat(category);
 }
 
 function loadChart(category, quota) {
-    fetch(`/api/category_history/${category}`)
-        .then(r => r.json())
+    const safeCategory = encodeURIComponent(category);
+    
+    fetch(`/api/category_history/${safeCategory}`)
+        .then(r => {
+            if (!r.ok) throw new Error("Erro na API");
+            return r.json();
+        })
         .then(data => {
             const ctx = document.getElementById('categoryChart').getContext('2d');
             if(myChart) myChart.destroy();
@@ -269,27 +340,36 @@ function loadChart(category, quota) {
                         { label: '2024', data: data['2024'], borderColor: '#ccc', borderDash: [5,5], tension: 0.3 },
                         { label: '2025 (Base)', data: data['2025'], borderColor: '#0d6efd', borderWidth: 2, tension: 0.3 },
                         { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3, tension: 0.1 },
-                        { label: 'Meta Móvel', data: Array(12).fill(quota), borderColor: '#dc3545', borderDash: [2,2], borderWidth: 1, pointRadius: 0 }
+                        { label: 'Meta Móvel', data: Array(12).fill(quota || 0), borderColor: '#dc3545', borderDash: [2,2], borderWidth: 1, pointRadius: 0 }
                     ]
                 },
                 options: { responsive: true, maintainAspectRatio: false }
             });
+        })
+        .catch(err => {
+            console.error("Erro ao carregar gráfico:", err);
+            document.getElementById('categoryChart').parentElement.innerHTML = `<div class="alert alert-warning">Não foi possível carregar o gráfico. Tente recarregar a página.</div>`;
         });
 }
 
 function loadChat(category) {
     const chatBox = document.getElementById('chatBox');
-    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-secondary"></div></div>';
+    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-secondary"></div><p>Aguardando Gemini...</p></div>';
     
-    fetch('/api/chat/init', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
+    fetchWithRetry('/api/chat/init', {
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({category: category})
     })
-    .then(r => r.json())
     .then(history => {
         chatBox.innerHTML = '';
-        history.forEach(msg => appendMessage(msg.parts[0], msg.role === 'model'));
+        if (history) {
+            history.forEach(msg => appendMessage(msg.parts[0], msg.role === 'model'));
+        }
         scrollToBottom();
+    })
+    .catch(err => {
+        chatBox.innerHTML = '<div class="alert alert-danger m-2">Erro ao conectar com a IA após 4 tentativas.</div>';
     });
 }
 
@@ -303,7 +383,8 @@ function sendMessage() {
     scrollToBottom();
     
     fetch('/api/chat/send', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({category: currentCategory, message: msg})
     })
     .then(r => r.json())
