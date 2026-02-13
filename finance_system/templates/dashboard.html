@@ -3,111 +3,163 @@
 {% block content %}
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>📊 Visão Estratégica</h2>
-        <form class="d-flex gap-2">
-            <input type="date" name="start" value="{{ start_date }}" class="form-control">
-            <input type="date" name="end" value="{{ end_date }}" class="form-control">
-            <button type="submit" class="btn btn-primary">Filtrar</button>
+        <div>
+            <h2 class="fw-bold mb-0">🧭 GPS Financeiro</h2>
+            <p class="text-muted mb-0">Referência: {{ ref_date.strftime('%B/%Y') }}</p>
+        </div>
+        <form class="d-flex align-items-center bg-white p-2 rounded shadow-sm">
+            <input type="date" name="ref_date" value="{{ ref_date }}" class="form-control form-control-sm me-2">
+            <button type="submit" class="btn btn-sm btn-primary">Ir</button>
         </form>
     </div>
 
     <div class="row mb-4">
         <div class="col-md-3">
-            <div class="card text-white bg-success h-100">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <h6 class="card-title">Receitas</h6>
-                    <h2 class="card-text">R$ {{ "%.2f"|format(kpis.income) }}</h2>
+                    <small class="text-muted text-uppercase fw-bold">Saldo Bancário</small>
+                    <h3 class="fw-bold {{ 'text-danger' if kpis.real_balance < 0 else 'text-dark' }}">
+                        R$ {{ kpis.real_balance }}
+                    </h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-danger h-100">
-                <div class="card-body">
-                    <h6 class="card-title">Despesas</h6>
-                    <h2 class="card-text">R$ {{ "%.2f"|format(kpis.expense) }}</h2>
+
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex justify-content-around align-items-center">
+                    <div class="text-center">
+                        <small class="text-success fw-bold">ENTRADAS</small>
+                        <h4 class="text-success">R$ {{ kpis.monthly_income }}</h4>
+                    </div>
+                    <div class="text-muted h3">-</div>
+                    <div class="text-center">
+                        <small class="text-danger fw-bold">SAÍDAS REAIS</small>
+                        <h4 class="text-danger">R$ {{ kpis.total_spent }}</h4> </div>
+                    <div class="text-muted h3">=</div>
+                    <div class="text-center">
+                        <small class="{{ 'text-success' if kpis.cash_burn >= 0 else 'text-danger' }} fw-bold">RESULTADO CAIXA</small>
+                        <h4 class="{{ 'text-success' if kpis.cash_burn >= 0 else 'text-danger' }} fw-bold">
+                            R$ {{ kpis.cash_burn }}
+                        </h4>
+                    </div>
                 </div>
             </div>
         </div>
+
         <div class="col-md-3">
-            <div class="card text-white {{ 'bg-primary' if kpis.balance >= 0 else 'bg-warning' }} h-100">
+            <div class="card border-0 shadow h-100 {{ 'bg-success' if kpis.free_balance > 0 else 'bg-danger' }} text-white">
                 <div class="card-body">
-                    <h6 class="card-title">Saldo</h6>
-                    <h2 class="card-text">R$ {{ "%.2f"|format(kpis.balance) }}</h2>
-                    <small>{{ "%.1f"|format(kpis.savings_rate) }}% de Economia</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-light h-100 border-primary">
-                <div class="card-body">
-                    <h6 class="card-title text-primary">Meta (10%)</h6>
-                    <h2 class="card-text">R$ {{ "%.2f"|format(kpis.target) }}</h2>
-                    <small class="{{ 'text-success' if kpis.balance >= kpis.target else 'text-danger' }}">
-                        {{ "Atingida" if kpis.balance >= kpis.target else "Falta R$ " ~ "%.2f"|format(kpis.target - kpis.balance) }}
-                    </small>
+                    <small class="text-white-50 text-uppercase fw-bold">Saldo Livre p/ Gasto</small>
+                    <h3 class="fw-bold">R$ {{ kpis.free_balance }}</h3>
+                    {% if kpis.free_balance < 0 %}
+                    <small class="text-white fw-bold"><i class="fas fa-exclamation-triangle"></i> PARE DE GASTAR!</small>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-md-8">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header">
-                    Custo de Vida Mensalizado (Top Categorias)
-                </div>
-                <div class="card-body">
-                    <canvas id="costChart"></canvas>
-                </div>
-            </div>
+    <div class="card shadow-sm mb-5">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-chart-pie me-2 text-primary"></i>Análise de Impacto (Para onde vai o dinheiro?)</h5>
+            <span class="badge bg-light text-dark border">Ordenado por Maior Gasto</span>
         </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm">
-                <div class="card-header">Radar de Dívidas Futuras</div>
-                <div class="card-body">
-                    <canvas id="debtChart"></canvas>
-                </div>
-            </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 30%;">Categoria</th>
+                        <th class="text-center">Impacto na Renda</th>
+                        <th class="text-center">Gasto Real (Mês)</th>
+                        <th class="text-center">Cota / Meta</th>
+                        <th class="text-end">Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr class="{{ 'table-danger bg-opacity-10' if row.is_alert else '' }}">
+                        <td>
+                            <div class="fw-bold text-dark">{{ row.category }}</div>
+                            {% if row.meta_anual == 0 %}
+                                <span class="badge bg-secondary" style="font-size: 0.7em;">Não Planejado</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td style="width: 25%;">
+                            <div class="d-flex align-items-center">
+                                <span class="me-2 small fw-bold {{ 'text-danger' if row.impact > 30 else 'text-primary' }}">
+                                    {{ "%.1f"|format(row.impact) }}%
+                                </span>
+                                <div class="progress flex-grow-1" style="height: 6px;">
+                                    <div class="progress-bar {{ 'bg-danger' if row.impact > 30 else 'bg-info' }}" 
+                                         role="progressbar" 
+                                         style="width: {{ row.impact }}%">
+                                    </div>
+                                </div>
+                            </div>
+                            <small class="text-muted" style="font-size: 0.7em;">da sua entrada mensal</small>
+                        </td>
+                        
+                        <td class="text-center">
+                            <span class="text-danger fw-bold h6 mb-0">R$ {{ row.realizado_mes }}</span>
+                        </td>
+                        
+                        <td class="text-center">
+                            <div class="small text-muted">Cota: R$ {{ row.cota_mensal }}</div>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar {{ 'bg-success' if row.pct_paid <= 100 else 'bg-warning' }}" 
+                                     style="width: {{ row.pct_paid }}%"></div>
+                            </div>
+                        </td>
+
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-success" 
+                                    onclick="openProvisionModal('{{ row.category }}', 'in')">
+                                <i class="fas fa-piggy-bank"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% include 'goals_modal_partial.html' ignore missing %}
+<div class="modal fade" id="provisionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('goals') }}" method="POST">
+                <input type="hidden" name="action" value="add_provision">
+                <input type="hidden" name="next_page" value="dashboard"> 
+                <div class="modal-header">
+                    <h5 class="modal-title" id="provTitle">Guardar Dinheiro</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" id="provCat">
+                    <div class="mb-3">
+                        <label>Valor (R$)</label>
+                        <input type="number" step="1" name="amount" class="form-control" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label>Onde guardou?</label>
+                        <input type="text" name="memo" class="form-control" placeholder="Ex: Investimento X">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 <script>
-    // Gráfico de Custos Mensalizados
-    const ctx = document.getElementById('costChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: {{ chart_data.categories | safe }},
-            datasets: [{
-                label: 'Custo Mensal Médio (R$)',
-                data: {{ chart_data.values | safe }},
-                backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                borderColor: 'rgba(255, 99, 132, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            indexAxis: 'y', // Gráfico Horizontal para ler melhor as categorias
-        }
-    });
-
-    // Gráfico de Dívidas (Opcional, se houver dados)
-    const ctxDebt = document.getElementById('debtChart').getContext('2d');
-    new Chart(ctxDebt, {
-        type: 'line',
-        data: {
-            labels: {{ debt_data.months | safe }},
-            datasets: [{
-                label: 'Passivos Futuros',
-                data: {{ debt_data.values | safe }},
-                borderColor: 'orange',
-                backgroundColor: 'rgba(255, 165, 0, 0.2)',
-                fill: true
-            }]
-        }
-    });
+    function openProvisionModal(category, type) {
+        document.getElementById('provCat').value = category;
+        new bootstrap.Modal(document.getElementById('provisionModal')).show();
+    }
 </script>
 {% endblock %}

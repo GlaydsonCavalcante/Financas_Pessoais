@@ -1,102 +1,200 @@
 import pandas as pd
 from datetime import date
 from src.database.connection import db_instance
+from src.database.repository import TransactionRepository
+
+pd.set_option('future.no_silent_downcasting', True)
 
 class BudgetService:
-    def get_budget_summary(self, year):
-        """
-        Gera o relatório principal: Meta vs Realizado vs Guardado
-        Retorna uma lista de dicionários pronta para o HTML.
-        """
+    def __init__(self):
+        self.repository = TransactionRepository()
+    
+    # === 1. LÓGICA DO DASHBOARD (MENSAL / GPS) ===
+    # ESTE MÉTODO ESTAVA FALTANDO E CAUSOU O ERRO
+    def get_dashboard_overview(self, year=None, month=None):
+        today = date.today()
+        if not year: year = today.year
+        if not month: month = today.month
+        
+        months_left = 13 - month
+        if months_left < 1: months_left = 1 
+
+        # --- BUSCA DADOS LIMPOS DO REPOSITÓRIO ---
+        df_metas = self.repository.get_budget_vs_real(year) # Já traz Meta e Travas
+        
+        # Realizado YTD
+        df_real_ytd = self.repository.get_expenses_by_category(year)
+        df_real_ytd.rename(columns={'category': 'categoria', 'amount': 'realizado_acumulado'}, inplace=True)
+        
+        # Cofre YTD
         conn = db_instance.get_connection()
-        
-        # 1. Busca Metas Definidas
-        df_metas = pd.read_sql_query(f"SELECT categoria, valor_meta FROM annual_budgets WHERE ano = {year}", conn)
-        
-        # 2. Busca Realizado (Despesas do ano)
-        # Atenção: Soma despesas (negativas) e inverte o sinal para positivo
-        df_real = pd.read_sql_query(f"""
-            SELECT category as categoria, SUM(ABS(amount)) as realizado 
-            FROM transactions 
-            WHERE strftime('%Y', date) = '{year}' AND amount < 0 
-            GROUP BY category
-        """, conn)
-        
-        # 3. Busca Guardado (Saldo do Cofre)
-        # Soma tudo o que foi guardado (positivo) e retirado (negativo)
-        df_cofre = pd.read_sql_query(f"""
-            SELECT categoria, SUM(valor) as guardado 
+        df_cofre_ytd = pd.read_sql_query(f"""
+            SELECT categoria, SUM(valor) as guardado_acumulado
             FROM budget_provisions 
-            WHERE strftime('%Y', data) = '{year}'
+            WHERE strftime('%Y', data) = '{year}' AND categoria != '⛔ IGNORADO'
             GROUP BY categoria
         """, conn)
-        
         conn.close()
+
+        # Mês Atual
+        monthly_data = self.repository.get_monthly_breakdown(year, month)
+        df_real_month = monthly_data['breakdown']
+        df_real_month.rename(columns={'category': 'categoria', 'amount': 'realizado_mes'}, inplace=True)
         
-        # 4. Cruzamento de Dados (Merge)
-        # Se não tiver meta, usa 0. Se não tiver gasto, usa 0.
-        res = pd.merge(df_metas, df_real, on='categoria', how='outer').fillna(0)
-        res = pd.merge(res, df_cofre, on='categoria', how='outer').fillna(0)
+        income_month = monthly_data['income']
+        total_provisions_balance = self.repository.get_provisions_sum(year) # Total geral
+
+        # --- PROCESSAMENTO ---
+        # Unifica DataFrames (Garante que todas as categorias apareçam)
+        df = pd.merge(df_metas, df_real_ytd, on='categoria', how='outer')
+        df = pd.merge(df, df_cofre_ytd, on='categoria', how='outer')
+        df = pd.merge(df, df_real_month, on='categoria', how='outer').fillna(0)
+
+        overview_data = []
+        total_quotas = 0
+        safe_income = income_month if income_month > 0 else 1.0
+
+        for _, row in df.iterrows():
+            cat = row['categoria']
+            if not cat: continue
+
+            meta = row['valor_meta']
+            real_ytd = row['realizado_acumulado']
+            saved_ytd = row['guardado_acumulado']
+            real_mes = row['realizado_mes']
+            
+            # Fórmula GPS
+            remaining_goal = meta - (real_ytd + saved_ytd)
+            
+            if meta > 0:
+                cota_mensal = max(0, remaining_goal / months_left)
+            else:
+                cota_mensal = real_mes # Sem meta = impacto total
+
+            total_quotas += cota_mensal
+            
+            visual_target = max(cota_mensal, real_mes) if cota_mensal > 0 else (real_mes if real_mes > 0 else 1)
+            
+            overview_data.append({
+                'category': cat,
+                'meta_anual': meta,
+                'cota_mensal': int(cota_mensal),
+                'realizado_mes': int(real_mes),
+                'pct_paid': (real_mes / visual_target * 100),
+                'impact': (real_mes / safe_income * 100),
+                'is_alert': (real_mes > cota_mensal) and (meta > 0)
+            })
+
+        economic_result = income_month - total_quotas
+        cash_burn = income_month - monthly_data['total_spent']
+
+        return {
+            'rows': sorted(overview_data, key=lambda x: x['realizado_mes'], reverse=True),
+            'kpis': {
+                'income': int(income_month),
+                'total_quotas': int(total_quotas),
+                'total_spent': int(monthly_data['total_spent']),
+                'economic_result': int(economic_result),
+                'cash_burn': int(cash_burn),
+                'provisions_balance': int(total_provisions_balance)
+            }
+        }
+
+    # === 2. LÓGICA DE METAS (ANUAL) ===
+    def init_budget_from_history(self, target_year, base_year):
+        df_base = self.repository.get_expenses_by_category(base_year)
+        if df_base.empty: return 0
+            
+        conn = db_instance.get_connection()
+        cursor = conn.cursor()
+        count = 0
+        for _, row in df_base.iterrows():
+            cursor.execute("""
+                INSERT INTO annual_budgets (ano, categoria, valor_meta, is_locked) 
+                VALUES (?, ?, ?, 0)
+                ON CONFLICT(ano, categoria) DO UPDATE SET valor_meta = excluded.valor_meta
+            """, (target_year, row['category'], row['amount']))
+            count += 1
+        conn.commit()
+        conn.close()
+        return count
+
+    def apply_curve(self, year, curve_type):
+        financials = self.repository.get_year_financials(year) # Usa ano atual para renda
+        net_income = financials['net_income']
         
-        # 5. Cálculos de Negócio (A Fórmula Mestra)
-        today = date.today()
-        months_left = 12 - today.month + 1 if year == today.year else 12
-        if year < today.year: months_left = 1 # Evita divisão por zero no passado
+        if net_income <= 0: return {"error": "Sem renda líquida registrada."}
+
+        global_cap = net_income if curve_type == 1 else net_income * 0.90
         
+        df_budget = self.repository.get_budget_vs_real(year)
+        locked_total = df_budget[df_budget['is_locked'] == 1]['valor_meta'].sum()
+        unlocked_df = df_budget[df_budget['is_locked'] == 0]
+        unlocked_total = unlocked_df['valor_meta'].sum()
+        
+        available = global_cap - locked_total
+        
+        if available < 0:
+            return {"error": f"Travas (R$ {locked_total:.0f}) já excedem o teto (R$ {global_cap:.0f})."}
+            
+        if unlocked_total > available and unlocked_total > 0:
+            factor = available / unlocked_total
+            conn = db_instance.get_connection()
+            for _, row in unlocked_df.iterrows():
+                new_val = row['valor_meta'] * factor
+                conn.execute("UPDATE annual_budgets SET valor_meta = ? WHERE ano = ? AND categoria = ?", 
+                            (new_val, year, row['categoria']))
+            conn.commit()
+            conn.close()
+            return {"success": True}
+        
+        return {"success": True, "message": "Já está dentro da curva."}
+
+    def get_budget_summary(self, year):
+        df = self.repository.get_budget_vs_real(year)
         summary = []
-        for _, row in res.iterrows():
-            meta = row['valor_meta'] if 'valor_meta' in row else 0
+        months_left = 13 - date.today().month if year == date.today().year else 1
+        months_left = max(1, months_left)
+
+        for _, row in df.iterrows():
+            if not row['categoria']: continue
+            meta = row['valor_meta']
             real = row['realizado']
             saved = row['guardado']
             
-            # Quanto já cobrimos da meta?
-            coberto = real + saved
-            
-            # Saldo a cobrir (Nunca negativo)
-            falta = max(0, meta - coberto)
-            
-            # Cota Mensal Sugerida
-            cota = falta / months_left if months_left > 0 else 0
-            
-            # Percentual para barra de progresso
-            pct = (coberto / meta * 100) if meta > 0 else 0
-            pct = min(100, pct) # Trava visual em 100%
+            falta = max(0, meta - (real + saved))
             
             summary.append({
                 'categoria': row['categoria'],
                 'meta': meta,
                 'realizado': real,
                 'guardado': saved,
-                'total_coberto': coberto,
-                'falta': falta,
-                'cota_mensal': cota,
-                'pct': pct,
-                'status_class': 'success' if pct >= 100 else 'warning' if pct > 80 else 'primary'
+                'is_locked': bool(row['is_locked']),
+                'total_coberto': real + saved,
+                'cota_mensal': falta / months_left
             })
             
-        # Ordena: Maior meta primeiro
         return sorted(summary, key=lambda x: x['meta'], reverse=True)
 
-    def set_annual_goal(self, year, category, amount):
-        """Define ou atualiza a meta anual"""
+    def toggle_lock(self, year, category):
         conn = db_instance.get_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO annual_budgets (ano, categoria, valor_meta) 
-            VALUES (?, ?, ?)
+        conn.execute("UPDATE annual_budgets SET is_locked = NOT is_locked WHERE ano = ? AND categoria = ?", (year, category))
+        conn.commit()
+        conn.close()
+        
+    def set_annual_goal(self, year, category, amount):
+        conn = db_instance.get_connection()
+        conn.execute("""
+            INSERT INTO annual_budgets (ano, categoria, valor_meta) VALUES (?, ?, ?)
             ON CONFLICT(ano, categoria) DO UPDATE SET valor_meta = excluded.valor_meta
         """, (year, category, amount))
         conn.commit()
         conn.close()
 
     def add_provision(self, category, amount, memo, date_str=None):
-        """Adiciona (ou remove se negativo) dinheiro do cofre"""
-        if not date_str:
-            date_str = date.today().strftime('%Y-%m-%d')
-            
+        if not date_str: date_str = date.today().strftime('%Y-%m-%d')
         conn = db_instance.get_connection()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO budget_provisions (data, categoria, valor, memo) VALUES (?, ?, ?, ?)",
+        conn.execute("INSERT INTO budget_provisions (data, categoria, valor, memo) VALUES (?, ?, ?, ?)",
                     (date_str, category, amount, memo))
         conn.commit()
         conn.close()

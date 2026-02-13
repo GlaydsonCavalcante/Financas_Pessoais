@@ -1,84 +1,198 @@
 {% extends "base.html" %}
 
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<style>
+    /* Correção de Contraste das Abas */
+    .nav-tabs .nav-link { color: #495057; background-color: #f8f9fa; border: 1px solid #dee2e6; }
+    .nav-tabs .nav-link.active { color: #000 !important; background-color: #fff !important; border-bottom-color: transparent; font-weight: bold; border-top: 3px solid #0d6efd; }
+    .nav-tabs .nav-link:hover { color: #0d6efd; }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>🎯 Metas Anuais ({{ year }})</h2>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newGoalModal">
-        <i class="fas fa-plus me-2"></i> Definir Meta
-    </button>
+    <div>
+        <h2>🎯 Planejamento & Controle {{ year }}</h2>
+        <p class="text-muted mb-0">Defina a estratégia anual e execute o tático mensal.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newGoalModal">
+            <i class="fas fa-plus me-2"></i> Nova Meta
+        </button>
+    </div>
 </div>
 
-<div class="row">
-    {% for item in summary %}
-    <div class="col-md-6 mb-4">
-        <div class="card shadow-sm border-0 h-100">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h5 class="card-title mb-0 fw-bold text-dark">{{ item.categoria }}</h5>
-                    <span class="badge bg-light text-dark border">
-                        Meta: R$ {{ "{:,.0f}".format(item.meta).replace(',', '.') }}
-                    </span>
-                </div>
+<ul class="nav nav-tabs mb-4" id="budgetTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="annual-tab" data-bs-toggle="tab" data-bs-target="#annual-pane" type="button" role="tab">
+            🗺️ Estratégia Anual
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="monthly-tab" data-bs-toggle="tab" data-bs-target="#monthly-pane" type="button" role="tab">
+            🧭 GPS Mensal (Tático)
+        </button>
+    </li>
+</ul>
 
-                <div class="progress mb-2" style="height: 25px;">
-                    <div class="progress-bar bg-primary" role="progressbar" 
-                         style="width: {{ (item.realizado / item.meta * 100) if item.meta > 0 else 0 }}%" 
-                         title="Pago: R$ {{ item.realizado }}">
-                        {% if item.realizado > 0 %}💸{% endif %}
-                    </div>
-                    <div class="progress-bar bg-info opacity-75" role="progressbar" 
-                         style="width: {{ (item.guardado / item.meta * 100) if item.meta > 0 else 0 }}%" 
-                         title="No Cofre: R$ {{ item.guardado }}">
-                        {% if item.guardado > 0 %}🏦{% endif %}
-                    </div>
-                </div>
-
-                <div class="d-flex justify-content-between small text-muted mb-3">
-                    <span>
-                        Pago: <strong>{{ "{:,.0f}".format(item.realizado).replace(',', '.') }}</strong> + 
-                        Cofre: <strong>{{ "{:,.0f}".format(item.guardado).replace(',', '.') }}</strong>
-                    </span>
-                    <span>
-                        Total: <strong>{{ "{:,.0f}".format(item.total_coberto).replace(',', '.') }}</strong>
-                    </span>
-                </div>
-
-                {% if item.falta > 0 %}
-                <div class="alert alert-warning py-2 d-flex justify-content-between align-items-center">
-                    <span>
-                        <i class="fas fa-exclamation-circle me-1"></i>
-                        Falta: R$ {{ "{:,.0f}".format(item.falta).replace(',', '.') }}
-                    </span>
-                    <strong class="text-dark">
-                        Cota Mês: R$ {{ "{:,.0f}".format(item.cota_mensal).replace(',', '.') }}
-                    </strong>
-                </div>
-                {% else %}
-                <div class="alert alert-success py-2 text-center">
-                    <i class="fas fa-check-circle me-2"></i> Meta 100% Garantida!
-                </div>
-                {% endif %}
-
-                <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-success flex-grow-1" 
-                            onclick="openProvisionModal('{{ item.categoria }}', 'in')">
-                        <i class="fas fa-piggy-bank me-1"></i> Guardar
+<div class="tab-content" id="budgetTabsContent">
+    
+    <div class="tab-pane fade show active" id="annual-pane" role="tabpanel">
+        
+        <div class="card bg-light border-0 mb-4">
+            <div class="card-body d-flex flex-wrap gap-3 align-items-center">
+                <span class="fw-bold text-muted"><i class="fas fa-tools me-2"></i>Ações em Massa:</span>
+                
+                <form action="{{ url_for('init_history') }}" method="POST" class="d-inline">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Copiar gastos de 2025 para metas de 2026?')">
+                        <i class="fas fa-history me-1"></i> Copiar Base 2025
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary" 
-                            onclick="openProvisionModal('{{ item.categoria }}', 'out')"
-                            title="Usar dinheiro do cofre para pagar">
-                        <i class="fas fa-money-bill-wave"></i> Usar
+                </form>
+
+                <div class="vr mx-2"></div>
+
+                <form action="{{ url_for('apply_curve') }}" method="POST" class="d-inline">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <input type="hidden" name="curve_type" value="1">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-balance-scale me-1"></i> Curva Equilíbrio
                     </button>
+                </form>
+
+                <form action="{{ url_for('apply_curve') }}" method="POST" class="d-inline">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <input type="hidden" name="curve_type" value="2">
+                    <button type="submit" class="btn btn-sm btn-success fw-bold">
+                        <i class="fas fa-rocket me-1"></i> Curva Prosperidade (10%)
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="row">
+            {% for item in summary %}
+            <div class="col-md-6 mb-3">
+                <div class="card shadow-sm border-0 h-100 {{ 'border-start border-warning border-4' if item.is_locked else '' }}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <form action="{{ url_for('toggle_lock') }}" method="POST" class="m-0 p-0">
+                                    <input type="hidden" name="year" value="{{ year }}">
+                                    <input type="hidden" name="category" value="{{ item.categoria }}">
+                                    <button type="submit" class="btn btn-link p-0 text-decoration-none" 
+                                            title="{{ 'Destravar' if item.is_locked else 'Travar' }}">
+                                        <i class="fas {{ 'fa-lock text-warning' if item.is_locked else 'fa-lock-open text-muted opacity-25' }}"></i>
+                                    </button>
+                                </form>
+                                <h5 class="card-title mb-0 fw-bold text-truncate" style="max-width: 220px;" title="{{ item.categoria }}">
+                                    {{ item.categoria }}
+                                </h5>
+                            </div>
+                            <span class="badge bg-light text-dark border">
+                                Meta: R$ {{ "{:,.0f}".format(item.meta).replace(',', '.') }}
+                            </span>
+                        </div>
+
+                        <div class="progress mb-2" style="height: 8px;">
+                            <div class="progress-bar bg-primary" style="width: {{ (item.realizado / item.meta * 100) if item.meta > 0 else 0 }}%"></div>
+                            <div class="progress-bar bg-info opacity-75" style="width: {{ (item.guardado / item.meta * 100) if item.meta > 0 else 0 }}%"></div>
+                        </div>
+
+                        <div class="d-flex justify-content-between small text-muted mb-3">
+                            <span>YTD: R$ {{ "{:,.0f}".format(item.total_coberto) }}</span>
+                            <span>Cota Mês: R$ {{ "{:,.0f}".format(item.cota_mensal if item.cota_mensal is defined else 0) }}</span>
+                        </div>
+
+                        <button class="btn btn-sm btn-outline-dark w-100" 
+                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }})">
+                            <i class="fas fa-chart-line me-2"></i>Detalhar & Analisar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="monthly-pane" role="tabpanel">
+        <div class="alert alert-info shadow-sm mb-4">
+            <i class="fas fa-compass me-2"></i>
+            <strong>Tático Mensal:</strong> Valores disponíveis para gastar hoje, considerando o saldo anual restante.
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Categoria</th>
+                        <th class="text-center">Disponível no Mês</th>
+                        <th class="text-end">Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in summary %}
+                    <tr>
+                        <td class="fw-bold">{{ item.categoria }}</td>
+                        <td class="text-center">
+                            <span class="badge {{ 'bg-success text-success' if (item.cota_mensal is defined and item.cota_mensal > 0) else 'bg-danger text-danger' }} bg-opacity-10 border px-3 py-2">
+                                R$ {{ "{:,.0f}".format(item.cota_mensal if item.cota_mensal is defined else 0) }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-success" onclick="openProvisionModal('{{ item.categoria }}')">
+                                <i class="fas fa-piggy-bank"></i> Guardar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="specialistModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content h-100">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title"><i class="fas fa-microscope me-2"></i>Análise: <span id="specialistCatName"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="row g-0 h-100">
+                    <div class="col-lg-7 p-4 border-end">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold">📊 Histórico 3 Anos</h6>
+                            <form action="{{ url_for('goals') }}" method="POST" class="d-flex gap-2">
+                                <input type="hidden" name="action" value="set_goal">
+                                <input type="hidden" name="year" value="{{ year }}">
+                                <input type="hidden" name="category" id="editCatInput">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">Meta</span>
+                                    <input type="number" name="amount" id="editAmountInput" class="form-control" style="width: 100px;">
+                                    <button class="btn btn-primary" type="submit">Salvar</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div style="height: 400px; width: 100%;"><canvas id="categoryChart"></canvas></div>
+                    </div>
+                    <div class="col-lg-5 d-flex flex-column bg-light" style="height: 600px;">
+                        <div class="p-3 border-bottom bg-white">
+                            <h6 class="mb-0 fw-bold text-success"><i class="fas fa-robot me-2"></i>Consultor Especialista</h6>
+                        </div>
+                        <div id="chatBox" class="flex-grow-1 p-3 overflow-auto"></div>
+                        <div class="p-3 border-top bg-white">
+                            <div class="input-group">
+                                <input type="text" id="userMsg" class="form-control" placeholder="Pergunte...">
+                                <button class="btn btn-success" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    {% else %}
-    <div class="col-12 text-center py-5">
-        <h3 class="text-muted">Nenhuma meta definida para {{ year }}.</h3>
-        <p>Clique em "Definir Meta" para começar seu planejamento.</p>
-    </div>
-    {% endfor %}
 </div>
 
 <div class="modal fade" id="newGoalModal" tabindex="-1">
@@ -86,28 +200,17 @@
         <div class="modal-content">
             <form action="{{ url_for('goals') }}" method="POST">
                 <input type="hidden" name="action" value="set_goal">
-                <div class="modal-header">
-                    <h5 class="modal-title">Definir Orçamento Anual</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <input type="hidden" name="year" value="{{ year }}">
+                <div class="modal-header"><h5 class="modal-title">Nova Meta</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label>Categoria</label>
-                        <select name="category" class="form-select" required>
-                            {% for cat in all_categories %}
-                            <option value="{{ cat }}">{{ cat }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label>Valor Anual (R$)</label>
-                        <input type="number" step="1" name="amount" class="form-control" required placeholder="Ex: 1200">
-                        <div class="form-text">Quanto você pretende gastar em todo o ano de {{ year }}?</div>
-                    </div>
+                    <label>Categoria</label>
+                    <select name="category" class="form-select mb-3">
+                        {% for cat in all_categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+                    </select>
+                    <label>Valor Anual</label>
+                    <input type="number" name="amount" class="form-control" required>
                 </div>
-                <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">Salvar Meta</button>
-                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
             </form>
         </div>
     </div>
@@ -118,51 +221,111 @@
         <div class="modal-content">
             <form action="{{ url_for('goals') }}" method="POST">
                 <input type="hidden" name="action" value="add_provision">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="provTitle">Movimentar Cofre</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <input type="hidden" name="year" value="{{ year }}">
+                <div class="modal-header"><h5 class="modal-title">Guardar</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <input type="hidden" name="category" id="provCat">
-                    
-                    <div class="alert alert-info" id="provTypeInfo"></div>
-
-                    <div class="mb-3">
-                        <label>Valor (R$)</label>
-                        <input type="number" step="1" name="amount" id="provAmount" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label>Local / Motivo</label>
-                        <input type="text" name="memo" class="form-control" placeholder="Ex: Nubank Caixinha ou Pagamento IPVA">
-                    </div>
+                    <label>Valor</label><input type="number" name="amount" class="form-control mb-3" required>
+                    <label>Motivo</label><input type="text" name="memo" class="form-control">
                 </div>
-                <div class="modal-footer">
-                    <button type="submit" class="btn btn-success">Confirmar</button>
-                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-success">Confirmar</button></div>
             </form>
         </div>
     </div>
 </div>
 
 <script>
-    function openProvisionModal(category, type) {
-        document.getElementById('provCat').value = category;
-        const modal = new bootstrap.Modal(document.getElementById('provisionModal'));
-        const title = document.getElementById('provTitle');
-        const info = document.getElementById('provTypeInfo');
-        const input = document.getElementById('provAmount');
+let myChart = null;
+let currentCategory = '';
 
-        if (type === 'in') {
-            title.innerText = "🏦 Guardar no Cofre (" + category + ")";
-            info.innerText = "Isso aumentará seu saldo provisionado. O valor será deduzido da meta a cumprir.";
-            input.value = "";
-            input.setAttribute('min', '0');
-        } else {
-            title.innerText = "💸 Baixar do Cofre (" + category + ")";
-            info.innerText = "Use isso quando pagar a conta. Digite o valor NEGATIVO (ex: -100).";
-            input.value = "-";
-        }
-        modal.show();
-    }
+function openProvisionModal(category) {
+    document.getElementById('provCat').value = category;
+    new bootstrap.Modal(document.getElementById('provisionModal')).show();
+}
+
+function openSpecialist(category, currentMeta) {
+    currentCategory = category;
+    document.getElementById('specialistCatName').innerText = category;
+    document.getElementById('editCatInput').value = category;
+    document.getElementById('editAmountInput').value = currentMeta;
+    
+    new bootstrap.Modal(document.getElementById('specialistModal')).show();
+    loadChart(category, currentMeta/12); // Passa meta mensal estimada
+    loadChat(category);
+}
+
+function loadChart(category, quota) {
+    fetch(`/api/category_history/${category}`)
+        .then(r => r.json())
+        .then(data => {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            if(myChart) myChart.destroy();
+            
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+                    datasets: [
+                        { label: '2024', data: data['2024'], borderColor: '#ccc', borderDash: [5,5], tension: 0.3 },
+                        { label: '2025 (Base)', data: data['2025'], borderColor: '#0d6efd', borderWidth: 2, tension: 0.3 },
+                        { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3, tension: 0.1 },
+                        { label: 'Meta Móvel', data: Array(12).fill(quota), borderColor: '#dc3545', borderDash: [2,2], borderWidth: 1, pointRadius: 0 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        });
+}
+
+function loadChat(category) {
+    const chatBox = document.getElementById('chatBox');
+    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-secondary"></div></div>';
+    
+    fetch('/api/chat/init', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({category: category})
+    })
+    .then(r => r.json())
+    .then(history => {
+        chatBox.innerHTML = '';
+        history.forEach(msg => appendMessage(msg.parts[0], msg.role === 'model'));
+        scrollToBottom();
+    });
+}
+
+function sendMessage() {
+    const input = document.getElementById('userMsg');
+    const msg = input.value;
+    if(!msg) return;
+    
+    appendMessage(msg, false);
+    input.value = '';
+    scrollToBottom();
+    
+    fetch('/api/chat/send', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({category: currentCategory, message: msg})
+    })
+    .then(r => r.json())
+    .then(data => appendMessage(data.response, true));
+}
+
+function appendMessage(text, isModel) {
+    const chatBox = document.getElementById('chatBox');
+    const bg = isModel ? 'bg-white border' : 'bg-success text-white';
+    const align = isModel ? 'align-self-start' : 'align-self-end';
+    const content = isModel && typeof marked !== 'undefined' ? marked.parse(text) : text;
+    
+    chatBox.innerHTML += `
+    <div class="d-flex w-100 flex-column ${align} mb-3">
+        <div class="p-3 rounded shadow-sm ${bg}" style="max-width: 85%; font-size: 0.9rem;">${content}</div>
+    </div>`;
+    scrollToBottom();
+}
+
+function scrollToBottom() {
+    const d = document.getElementById('chatBox');
+    d.scrollTop = d.scrollHeight;
+}
 </script>
 {% endblock %}

@@ -1,0 +1,89 @@
+<div class="modal-header bg-dark text-white">
+    <h5 class="modal-title"><i class="fas fa-brain me-2"></i>Conselheiro Financeiro IA</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body">
+    <div class="row text-center mb-4">
+        <div class="col-6 border-end">
+            <small class="text-muted">Sua Renda Média</small>
+            <h4 class="text-success fw-bold">R$ {{ "%.2f"|format(scenarios.income) }}</h4>
+        </div>
+        <div class="col-6">
+            <small class="text-muted">Seu Gasto Atual (Inércia)</small>
+            <h4 class="{{ 'text-danger' if scenarios.current_burn > scenarios.income else 'text-warning' }} fw-bold">
+                R$ {{ "%.2f"|format(scenarios.current_burn) }}
+            </h4>
+        </div>
+    </div>
+
+    <div class="alert alert-info shadow-sm">
+        <h6><i class="fas fa-robot me-2"></i>Análise do Agente:</h6>
+        <div style="font-size: 0.9rem; white-space: pre-line;">
+            {{ scenarios.advice }}
+        </div>
+    </div>
+
+    <hr>
+
+    <h6 class="fw-bold mb-3">Escolha seu Plano de Ataque (Valores Mensais):</h6>
+    <form action="{{ url_for('goals_advisor', year=year) }}" method="POST">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Categoria</th>
+                        <th class="text-center text-muted">Histórico<br><small>(O que vc faz hoje)</small></th>
+                        <th class="text-center text-primary">Equilíbrio<br><small>(Teto da Renda)</small></th>
+                        <th class="text-center text-success fw-bold">Prosperidade<br><small>(Meta 15%)</small></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in range(scenarios.data.categories|length) %}
+                    <tr>
+                        <td class="small fw-bold">{{ scenarios.data.categories[i] }}</td>
+                        
+                        <td class="text-center text-muted">
+                            R$ {{ "%.0f"|format(scenarios.data.level_1[i]) }}
+                        </td>
+                        
+                        <td class="text-center text-primary">
+                            R$ {{ "%.0f"|format(scenarios.data.level_2[i]) }}
+                        </td>
+                        
+                        <td class="text-center text-success fw-bold bg-success bg-opacity-10">
+                            R$ {{ "%.0f"|format(scenarios.data.level_3[i]) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-dark">
+                    <tr>
+                        <td>TOTAL MENSAL</td>
+                        <td class="text-center">R$ {{ "%.0f"|format(scenarios.data.level_1|sum) }}</td>
+                        <td class="text-center">R$ {{ "%.0f"|format(scenarios.data.level_2|sum) }}</td>
+                        <td class="text-center text-success">R$ {{ "%.0f"|format(scenarios.data.level_3|sum) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="row g-2 mt-3">
+            <div class="col-md-4">
+                <button type="submit" name="chosen_level" value="level_1" class="btn btn-outline-secondary w-100">
+                    Manter Histórico
+                </button>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" name="chosen_level" value="level_2" class="btn btn-outline-primary w-100">
+                    Aplicar Equilíbrio
+                </button>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" name="chosen_level" value="level_3" class="btn btn-success w-100 fw-bold">
+                    Aplicar Prosperidade 🚀
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
