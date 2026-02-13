@@ -2,13 +2,13 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 import pandas as pd
 from datetime import date, timedelta
 import json
-from finance_system.src.database.budget_service import BudgetService
 
 # Imports dos seus Serviços
 from src.services.categorizer_service import CategorizerService
 from src.services.importer_service import ImporterService
 from src.services.loan_service import LoanService
 from src.database.connection import db_instance
+from src.services.budget_service import BudgetService
 
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_glaydson'
