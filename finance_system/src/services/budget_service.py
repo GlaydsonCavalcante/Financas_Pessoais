@@ -8,7 +8,7 @@ pd.set_option('future.no_silent_downcasting', True)
 class BudgetService:
     def __init__(self):
         self.repository = TransactionRepository()
-    
+          
     # === 1. LÓGICA DO DASHBOARD (MENSAL / GPS) ===
     # ESTE MÉTODO ESTAVA FALTANDO E CAUSOU O ERRO
     def get_dashboard_overview(self, year=None, month=None):
@@ -63,14 +63,18 @@ class BudgetService:
             saved_ytd = row['guardado_acumulado']
             real_mes = row['realizado_mes']
             
-            # Fórmula GPS
-            remaining_goal = meta - (real_ytd + saved_ytd)
+            # AJUSTE MATEMÁTICO: 
+            # O saldo para o cálculo da cota deve considerar o gasto ANTES deste mês
+            # para projetar quanto você pode gastar AGORA.
+            gasto_anterior = real_ytd - real_mes
+            saldo_disponivel_para_o_ano = meta - (gasto_anterior + saved_ytd)
             
             if meta > 0:
-                cota_mensal = max(0, remaining_goal / months_left)
+                # Cota Mensal baseada no saldo que restava no início do mês
+                cota_mensal = max(0, saldo_disponivel_para_o_ano / months_left)
             else:
-                cota_mensal = real_mes # Sem meta = impacto total
-
+                cota_mensal = real_mes
+                
             total_quotas += cota_mensal
             
             visual_target = max(cota_mensal, real_mes) if cota_mensal > 0 else (real_mes if real_mes > 0 else 1)

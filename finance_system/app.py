@@ -372,15 +372,22 @@ def dashboard():
 @app.route('/goals', methods=['GET', 'POST'])
 def goals():
     today = date.today()
-    # Recupera mês e ano do seletor (ou assume o atual)
-    view_year = int(request.args.get('year', today.year))
-    view_month = int(request.args.get('month', today.month))
-    
+    year = int(request.args.get('year', today.year))
+    month = int(request.args.get('month', today.month)) # Captura o mês selecionado
+
     if request.method == 'POST':
-        action = request.form.get('action')
-        # ... (sua lógica de set_goal e add_provision continua igual) ...
-        # IMPORTANTE: No redirect do POST, passe o mês e ano para não perder a visão
-        return redirect(url_for('goals', year=view_year, month=view_month))
+        # (lógica de salvar meta/provisão)
+        return redirect(url_for('goals', year=year, month=month))
+
+    summary = budget_service.get_budget_summary(year)
+    monthly_status = budget_service.get_dashboard_overview(year, month)
+    
+    return render_template('goals.html', 
+                           summary=summary, 
+                           monthly_status=monthly_status,
+                           year=year, 
+                           month=month, # Garante que o template saiba o mês
+                           all_categories=all_categories)
 
     # Busca o resumo anual para a Aba Estratégia
     summary = budget_service.get_budget_summary(view_year)
@@ -466,20 +473,20 @@ def init_history():
 
 @app.route('/goals/lock', methods=['POST'])
 def toggle_lock():
-    """Alterna entre Travado/Destravado"""
     year = int(request.form.get('year'))
+    month = int(request.form.get('month', date.today().month)) 
     category = request.form.get('category')
     budget_service.toggle_lock(year, category)
-    # Não precisa de flash message para ser rápido
-    return redirect(url_for('goals', year=year))
+    return redirect(url_for('goals', year=year, month=month)) 
 
 @app.route('/goals/curve', methods=['POST'])
 def apply_curve():
     """Aplica a Curva 1 (Equilíbrio) ou 2 (Prosperidade)"""
     year = int(request.form.get('year'))
+    month = int(request.form.get('month', date.today().month)) 
     curve_type = int(request.form.get('curve_type')) # 1 ou 2
     
-    result = budget_service.apply_curve(year, curve_type)
+    result = budget_service.apply_curve(year, curve_type, month=month)
     
     if "error" in result:
         flash(result['error'], "danger")

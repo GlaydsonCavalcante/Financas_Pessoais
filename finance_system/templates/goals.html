@@ -46,6 +46,7 @@
                 
                 <form action="{{ url_for('init_history') }}" method="POST" class="d-inline">
                     <input type="hidden" name="year" value="{{ year }}">
+                    <input type="hidden" name="month" value="{{ month }}">
                     <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Copiar gastos de 2025 para metas de 2026?')">
                         <i class="fas fa-history me-1"></i> Copiar Base 2025
                     </button>
@@ -56,6 +57,7 @@
                 <form action="{{ url_for('apply_curve') }}" method="POST" class="d-inline">
                     <input type="hidden" name="year" value="{{ year }}">
                     <input type="hidden" name="curve_type" value="1">
+                    <input type="hidden" name="month" value="{{ month }}">
                     <button type="submit" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-balance-scale me-1"></i> Curva Equilíbrio
                     </button>
@@ -64,6 +66,7 @@
                 <form action="{{ url_for('apply_curve') }}" method="POST" class="d-inline">
                     <input type="hidden" name="year" value="{{ year }}">
                     <input type="hidden" name="curve_type" value="2">
+                    <input type="hidden" name="month" value="{{ month }}">
                     <button type="submit" class="btn btn-sm btn-success fw-bold">
                         <i class="fas fa-rocket me-1"></i> Curva Prosperidade (10%)
                     </button>
@@ -81,6 +84,7 @@
                                 <form action="{{ url_for('toggle_lock') }}" method="POST" class="m-0 p-0">
                                     <input type="hidden" name="year" value="{{ year }}">
                                     <input type="hidden" name="category" value="{{ item.categoria }}">
+                                    <input type="hidden" name="month" value="{{ month }}">
                                     <button type="submit" class="btn btn-link p-0 text-decoration-none" 
                                             title="{{ 'Destravar' if item.is_locked else 'Travar' }}">
                                         <i class="fas {{ 'fa-lock text-warning' if item.is_locked else 'fa-lock-open text-muted opacity-25' }}"></i>
@@ -123,11 +127,11 @@
             <h5 class="mb-0 fw-bold"><i class="fas fa-calendar-alt me-2"></i>Período de Referência</h5>
             <form action="{{ url_for('goals') }}" method="GET" class="d-flex gap-2">
                 <input type="hidden" name="year" value="{{ year }}">
-                <select name="month" class="form-select form-select-sm" style="width: 150px;" onchange="this.form.submit()">
+                <input type="hidden" name="month" value="{{ month }}">
+
+                <select name="month" class="form-select" onchange="window.location.href='/goals?year={{ year }}&month=' + this.value">
                     {% for m in range(1, 13) %}
-                    <option value="{{ m }}" {{ 'selected' if m == month }}>
-                        {{ ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][m-1] }}
-                    </option>
+                    <option value="{{ m }}" {{ 'selected' if m == month }}>Mês {{ m }}</option>
                     {% endfor %}
                 </select>
                 <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -216,6 +220,7 @@
                             <form action="{{ url_for('goals') }}" method="POST" class="d-flex gap-2">
                                 <input type="hidden" name="action" value="set_goal">
                                 <input type="hidden" name="year" value="{{ year }}">
+                                <input type="hidden" name="month" value="{{ month }}">
                                 <input type="hidden" name="category" id="editCatInput">
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text bg-primary text-white">Meta</span>
@@ -253,6 +258,7 @@
             <form action="{{ url_for('goals') }}" method="POST">
                 <input type="hidden" name="action" value="set_goal">
                 <input type="hidden" name="year" value="{{ year }}">
+                <input type="hidden" name="month" value="{{ month }}">
                 <div class="modal-header"><h5 class="modal-title">Nova Meta</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <label>Categoria</label>
@@ -274,6 +280,7 @@
             <form action="{{ url_for('goals') }}" method="POST">
                 <input type="hidden" name="action" value="add_provision">
                 <input type="hidden" name="year" value="{{ year }}">
+                <input type="hidden" name="month" value="{{ month }}">
                 <div class="modal-header"><h5 class="modal-title">Guardar</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <input type="hidden" name="category" id="provCat">
