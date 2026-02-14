@@ -155,30 +155,44 @@ class BudgetService:
         return {"success": True, "message": "Já está dentro da curva."}
 
     def get_budget_summary(self, year):
-        df = self.repository.get_budget_vs_real(year)
+        # 1. Busca dados base e financeiros
+        df = self.repository.get_budget_vs_real(year) #
+        financials = self.repository.get_year_financials(year) #
+        net_income = financials['net_income'] #
+        
+        # 2. Peso da categoria para distribuição proporcional da renda
+        total_meta_atual = df['valor_meta'].sum() #
+        
         summary = []
-        months_left = 13 - date.today().month if year == date.today().year else 1
-        months_left = max(1, months_left)
+        today = date.today() #
+        months_left = 13 - today.month if year == today.year else 1 #
+        months_left = max(1, months_left) #
 
         for _, row in df.iterrows():
-            if not row['categoria']: continue
-            meta = row['valor_meta']
-            real = row['realizado']
-            saved = row['guardado']
+            if not row['categoria']: continue #
             
-            falta = max(0, meta - (real + saved))
+            meta_atual = row['valor_meta'] #
+            total_coberto = row['realizado'] + row['guardado'] #
+            
+            # Cálculo das Curvas de Referência (Baseado na sua lógica de 100% e 90% da renda)
+            peso = meta_atual / total_meta_atual if total_meta_atual > 0 else 0
+            valor_curva_1 = net_income * peso  # Equilíbrio
+            valor_curva_2 = (net_income * 0.90) * peso # Prosperidade
             
             summary.append({
                 'categoria': row['categoria'],
-                'meta': meta,
-                'realizado': real,
-                'guardado': saved,
+                'meta': meta_atual,
+                'realizado': row['realizado'],
+                'guardado': row['guardado'],
                 'is_locked': bool(row['is_locked']),
-                'total_coberto': real + saved,
-                'cota_mensal': falta / months_left
+                'total_coberto': total_coberto,
+                'saldo_restante': meta_atual - total_coberto,
+                'curva_1': valor_curva_1,
+                'curva_2': valor_curva_2,
+                'cota_mensal': max(0, (meta_atual - total_coberto) / months_left)
             })
             
-        return sorted(summary, key=lambda x: x['meta'], reverse=True)
+        return sorted(summary, key=lambda x: x['meta'], reverse=True) 
 
     def toggle_lock(self, year, category):
         conn = db_instance.get_connection()

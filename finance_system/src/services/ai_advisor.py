@@ -91,15 +91,16 @@ class AIAdvisor:
         return "❌ O Consultor está indisponível no momento (Erro de Conexão com Gemini). Tente novamente em instantes."
 
     def ask_specialist(self, category, user_message=None):
-        if not self.model: return "Erro: API Key não configurada."
+        if not self.model: 
+            return "Erro: API Key não configurada."
 
         df, meta_val = self.get_category_context(category)
         history = self.get_chat_history(category)
         
-        # GERAÇÃO INICIAL (SEM PERGUNTA DO USUÁRIO)
+        # Define o prompt dependendo se é início de conversa ou interação
         if not history and not user_message:
             data_str = df.to_string(index=False) if not df.empty else "Sem dados registrados."
-            initial_prompt = f"""
+            prompt = f"""
             Você é um Consultor Especialista na categoria: '{category}'.
             
             HISTÓRICO FINANCEIRO (2024-2026):
@@ -110,15 +111,25 @@ class AIAdvisor:
             Analise os dados acima. Identifique padrões de alta, sazonalidade ou controle.
             Seja breve (máximo 3 frases). Use Markdown.
             """
-            reply = self.ask_with_retry(initial_prompt)
-            self.save_message(category, 'model', reply)
-            return reply
+            else:
+            prompt = user_message
 
-        # CHAT CONTÍNUO
-        if user_message:
-            self.save_message(category, 'user', user_message)
-            reply = self.ask_with_retry(user_message, history=history)
-            self.save_message(category, 'model', reply)
-            return reply
+        # LÓGICA DE PERSISTÊNCIA (RETRY)
+        for tentativa in range(4):
+            try:
+                if history:
+                    chat = self.model.start_chat(history=history)
+                    response = chat.send_message(prompt)
+                else:
+                    response = self.model.generate_content(prompt)
+                
+                reply = response.text
+                self.save_message(category, 'model' if not user_message else 'model', reply)
+                return reply
             
-        return ""
+            except Exception as e:
+                print(f"Tentativa {tentativa + 1} falhou: {e}")
+                if tentativa < 3:
+                    time.sleep(2) # Aguarda 2 segundos antes de tentar novamente
+                else:
+                    return "❌ O Consultor está indisponível no momento (Erro de Conexão). Tente novamente em instantes."

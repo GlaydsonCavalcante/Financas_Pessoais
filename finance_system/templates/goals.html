@@ -79,18 +79,19 @@
             <div class="col-md-6 mb-3">
                 <div class="card shadow-sm border-0 h-100 {{ 'border-start border-warning border-4' if item.is_locked else '' }}">
                     <div class="card-body">
+                        
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="d-flex align-items-center gap-2">
                                 <form action="{{ url_for('toggle_lock') }}" method="POST" class="m-0 p-0">
                                     <input type="hidden" name="year" value="{{ year }}">
-                                    <input type="hidden" name="category" value="{{ item.categoria }}">
                                     <input type="hidden" name="month" value="{{ month }}">
+                                    <input type="hidden" name="category" value="{{ item.categoria }}">
                                     <button type="submit" class="btn btn-link p-0 text-decoration-none" 
                                             title="{{ 'Destravar' if item.is_locked else 'Travar' }}">
                                         <i class="fas {{ 'fa-lock text-warning' if item.is_locked else 'fa-lock-open text-muted opacity-25' }}"></i>
                                     </button>
                                 </form>
-                                <h5 class="card-title mb-0 fw-bold text-truncate" style="max-width: 220px;" title="{{ item.categoria }}">
+                                <h5 class="card-title mb-0 fw-bold text-truncate" style="max-width: 200px;">
                                     {{ item.categoria }}
                                 </h5>
                             </div>
@@ -99,18 +100,22 @@
                             </span>
                         </div>
 
+                        <div class="d-flex gap-2 mb-2">
+                            <small class="text-warning">⚖️ C1: R$ {{ "{:,.0f}".format(item.curva_1 if item.curva_1 is defined else 0) }}</small>
+                            <small class="text-success">🚀 C2: R$ {{ "{:,.0f}".format(item.curva_2 if item.curva_2 is defined else 0) }}</small>
+                        </div>
+
                         <div class="progress mb-2" style="height: 8px;">
                             <div class="progress-bar bg-primary" style="width: {{ (item.realizado / item.meta * 100) if item.meta > 0 else 0 }}%"></div>
-                            <div class="progress-bar bg-info opacity-75" style="width: {{ (item.guardado / item.meta * 100) if item.meta > 0 else 0 }}%"></div>
                         </div>
 
                         <div class="d-flex justify-content-between small text-muted mb-3">
                             <span>YTD: R$ {{ "{:,.0f}".format(item.total_coberto) }}</span>
-                            <span>Cota Mês: R$ {{ "{:,.0f}".format(item.cota_mensal if item.cota_mensal is defined else 0) }}</span>
+                            <span>Restante: R$ {{ "{:,.0f}".format(item.saldo_restante if item.saldo_restante is defined else 0) }}</span>
                         </div>
 
                         <button class="btn btn-sm btn-outline-dark w-100" 
-                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }})">
+                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ item.curva_1 if item.curva_1 is defined else 0 }}, {{ item.curva_2 if item.curva_2 is defined else 0 }})">
                             <i class="fas fa-chart-line me-2"></i>Detalhar & Analisar
                         </button>
                     </div>
@@ -316,25 +321,22 @@ function openProvisionModal(category) {
     new bootstrap.Modal(document.getElementById('provisionModal')).show();
 }
 
-function openSpecialist(category, currentMeta) {
+function openSpecialist(category, currentMeta, c1, c2) {
     currentCategory = category;
     document.getElementById('specialistCatName').innerText = category;
     document.getElementById('editCatInput').value = category;
     document.getElementById('editAmountInput').value = currentMeta;
     
     new bootstrap.Modal(document.getElementById('specialistModal')).show();
-    loadChart(category, currentMeta/12); 
+    // Passamos meta, curva 1 e curva 2 mensalizadas para o gráfico
+    loadChart(category, currentMeta/12, c1/12, c2/12);
     loadChat(category);
 }
 
-function loadChart(category, quota) {
+function loadChart(category, metaMovel, c1Movel, c2Movel) {
     const safeCategory = encodeURIComponent(category);
-    
     fetch(`/api/category_history/${safeCategory}`)
-        .then(r => {
-            if (!r.ok) throw new Error("Erro na API");
-            return r.json();
-        })
+        .then(r => r.json())
         .then(data => {
             const ctx = document.getElementById('categoryChart').getContext('2d');
             if(myChart) myChart.destroy();
@@ -346,16 +348,14 @@ function loadChart(category, quota) {
                     datasets: [
                         { label: '2024', data: data['2024'], borderColor: '#ccc', borderDash: [5,5], tension: 0.3 },
                         { label: '2025 (Base)', data: data['2025'], borderColor: '#0d6efd', borderWidth: 2, tension: 0.3 },
-                        { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3, tension: 0.1 },
-                        { label: 'Meta Móvel', data: Array(12).fill(quota || 0), borderColor: '#dc3545', borderDash: [2,2], borderWidth: 1, pointRadius: 0 }
+                        { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3 },
+                        { label: 'Meta Definida', data: Array(12).fill(metaMovel), borderColor: '#0d6efd', borderDash: [2, 2], pointRadius: 0 },
+                        { label: 'Limite Equilíbrio (C1)', data: Array(12).fill(c1Movel), borderColor: '#ffc107', borderDash: [5, 5], pointRadius: 0 },
+                        { label: 'Limite Prosperidade (C2)', data: Array(12).fill(c2Movel), borderColor: '#20c997', borderDash: [5, 5], pointRadius: 0 }
                     ]
                 },
                 options: { responsive: true, maintainAspectRatio: false }
             });
-        })
-        .catch(err => {
-            console.error("Erro ao carregar gráfico:", err);
-            document.getElementById('categoryChart').parentElement.innerHTML = `<div class="alert alert-warning">Não foi possível carregar o gráfico. Tente recarregar a página.</div>`;
         });
 }
 

@@ -369,42 +369,46 @@ def dashboard():
     )
 
 # === 5. METAS E ORÇAMENTO ===
+# === 5. METAS E ORÇAMENTO (CORRIGIDO) ===
 @app.route('/goals', methods=['GET', 'POST'])
 def goals():
     today = date.today()
     year = int(request.args.get('year', today.year))
-    month = int(request.args.get('month', today.month)) # Captura o mês selecionado
+    month = int(request.args.get('month', today.month))
+
+    # 1. GARANTIA: Definir categorias logo no início
+    cats_df = cat_service.get_unique_categories()
+    all_categories = cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
 
     if request.method == 'POST':
-        # (lógica de salvar meta/provisão)
+        action = request.form.get('action')
+        month = int(request.form.get('month', month))
+        
+        if action == 'set_goal':
+            cat = request.form.get('category')
+            val = float(request.form.get('amount'))
+            budget_service.set_annual_goal(year, cat, val)
+            flash(f"Meta de {cat} atualizada!", "success")
+            
+        elif action == 'add_provision':
+            cat = request.form.get('category')
+            val = float(request.form.get('amount'))
+            memo = request.form.get('memo')
+            budget_service.add_provision(cat, val, memo)
+            flash(f"Provisão de {cat} registrada.", "info")
+        
         return redirect(url_for('goals', year=year, month=month))
 
+    # 2. Busca dados para as abas
     summary = budget_service.get_budget_summary(year)
     monthly_status = budget_service.get_dashboard_overview(year, month)
     
     return render_template('goals.html', 
                            summary=summary, 
                            monthly_status=monthly_status,
+                           all_categories=all_categories,
                            year=year, 
-                           month=month, # Garante que o template saiba o mês
-                           all_categories=all_categories)
-
-    # Busca o resumo anual para a Aba Estratégia
-    summary = budget_service.get_budget_summary(view_year)
-    
-    # Busca o status específico do mês selecionado para a Aba GPS
-    # Isso nos dará o "Resultado do Mês" (Receita - Gasto - Guardado)
-    monthly_status = budget_service.get_dashboard_overview(view_year, view_month)
-    
-    cats_df = cat_service.get_unique_categories()
-    all_categories = cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
-    
-    return render_template('goals.html', 
-                           summary=summary, 
-                           monthly_status=monthly_status, # NOVO
-                           all_categories=all_categories, 
-                           year=view_year,
-                           month=view_month) # NOVO
+                           month=month)
 
 # --- ROTAS DO CONSELHEIRO ---
 
