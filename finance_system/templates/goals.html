@@ -9,6 +9,13 @@
     .nav-tabs .nav-link { color: #495057; background-color: #f8f9fa; border: 1px solid #dee2e6; }
     .nav-tabs .nav-link.active { color: #000 !important; background-color: #fff !important; border-bottom-color: transparent; font-weight: bold; border-top: 3px solid #0d6efd; }
     .nav-tabs .nav-link:hover { color: #0d6efd; }
+    
+    /* Área do Chat */
+    #chatBox {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -39,43 +46,75 @@
 <div class="tab-content" id="budgetTabsContent">
     
     <div class="tab-pane fade show active" id="annual-pane" role="tabpanel">
-        
-        <div class="card bg-light border-0 mb-4">
-            <div class="card-body d-flex flex-wrap gap-3 align-items-center">
-                <span class="fw-bold text-muted"><i class="fas fa-tools me-2"></i>Ações em Massa:</span>
+        {% set ns = namespace(total_meta=0, total_c1=0, total_c2=0) %}
+    {% for item in summary %}
+        {% set ns.total_meta = ns.total_meta + item.meta %}
+        {% set ns.total_c1 = ns.total_c1 + (item.curva_1 if item.curva_1 is defined else 0) %}
+        {% set ns.total_c2 = ns.total_c2 + (item.curva_2 if item.curva_2 is defined else 0) %}
+    {% endfor %}
+
+    {% set gap_c1 = ns.total_meta - ns.total_c1 %}
+    {% set gap_c2 = ns.total_meta - ns.total_c2 %}
+
+    <div class="card mb-4 border-0 shadow-sm" style="background: linear-gradient(to right, #f8f9fa, #e9ecef);">
+        <div class="card-body p-3">
+            <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-calculator me-2"></i>Status do Ajuste Orçamentário</h6>
+            
+            <div class="row text-center align-items-center">
                 
-                <form action="{{ url_for('init_history') }}" method="POST" class="d-inline">
-                    <input type="hidden" name="year" value="{{ year }}">
-                    <input type="hidden" name="month" value="{{ month }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Copiar gastos de 2025 para metas de 2026?')">
-                        <i class="fas fa-history me-1"></i> Copiar Base 2025
-                    </button>
-                </form>
+                <div class="col-md-4 border-end">
+                    <small class="text-muted d-block">Sua Meta Atual (Soma)</small>
+                    <h3 class="fw-bold text-dark">R$ {{ "{:,.0f}".format(ns.total_meta) }}</h3>
+                </div>
 
-                <div class="vr mx-2"></div>
+                <div class="col-md-4 border-end">
+                    <small class="text-primary fw-bold">Meta C1 (Equilíbrio)</small>
+                    <div class="d-flex justify-content-center align-items-center gap-2">
+                        <span class="text-muted">Teto: {{ "{:,.0f}".format(ns.total_c1) }}</span>
+                    </div>
+                    
+                    {% if gap_c1 > 0 %}
+                        <div class="mt-2">
+                            <span class="badge bg-danger p-2 animate-pulse">
+                                <i class="fas fa-cut me-1"></i> Corte R$ {{ "{:,.0f}".format(gap_c1) }}
+                            </span>
+                        </div>
+                    {% else %}
+                        <div class="mt-2 text-success fw-bold"><i class="fas fa-check-circle"></i> Equilibrado</div>
+                    {% endif %}
+                </div>
 
-                <form action="{{ url_for('apply_curve') }}" method="POST" class="d-inline">
-                    <input type="hidden" name="year" value="{{ year }}">
-                    <input type="hidden" name="curve_type" value="1">
-                    <input type="hidden" name="month" value="{{ month }}">
-                    <button type="submit" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-balance-scale me-1"></i> Curva Equilíbrio
-                    </button>
-                </form>
+                <div class="col-md-4">
+                    <small class="text-success fw-bold">Meta C2 (Prosperidade)</small>
+                    <div class="d-flex justify-content-center align-items-center gap-2">
+                        <span class="text-muted">Alvo: {{ "{:,.0f}".format(ns.total_c2) }}</span>
+                    </div>
 
-                <form action="{{ url_for('apply_curve') }}" method="POST" class="d-inline">
-                    <input type="hidden" name="year" value="{{ year }}">
-                    <input type="hidden" name="curve_type" value="2">
-                    <input type="hidden" name="month" value="{{ month }}">
-                    <button type="submit" class="btn btn-sm btn-success fw-bold">
-                        <i class="fas fa-rocket me-1"></i> Curva Prosperidade (10%)
-                    </button>
-                </form>
+                    {% if gap_c2 > 0 %}
+                        <div class="mt-2">
+                            <span class="badge bg-warning text-dark p-2">
+                                <i class="fas fa-bullseye me-1"></i> Reduza R$ {{ "{:,.0f}".format(gap_c2) }}
+                            </span>
+                        </div>
+                    {% else %}
+                        <div class="mt-2 text-success fw-bold"><i class="fas fa-star"></i> Atingido!</div>
+                    {% endif %}
+                </div>
+
             </div>
+            
+            {% if ns.total_meta > 0 %}
+            <div class="progress mt-3" style="height: 10px;">
+                {% set pct_c1 = (ns.total_c1 / ns.total_meta * 100) %}
+                <div class="progress-bar bg-primary opacity-50" role="progressbar" style="width: {{ pct_c1 }}%" title="Coberto pela Receita"></div>
+                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ 100 - pct_c1 }}%" title="Excesso (Prejuízo)"></div>
+            </div>
+            {% endif %}
         </div>
+    </div>
 
         <div class="row">
-            {% for item in summary %}
+            {% for item in summary %}            
             <div class="col-md-6 mb-3">
                 <div class="card shadow-sm border-0 h-100 {{ 'border-start border-warning border-4' if item.is_locked else '' }}">
                     <div class="card-body">
@@ -84,10 +123,9 @@
                             <div class="d-flex align-items-center gap-2">
                                 <form action="{{ url_for('toggle_lock') }}" method="POST" class="m-0 p-0">
                                     <input type="hidden" name="year" value="{{ year }}">
-                                    <input type="hidden" name="month" value="{{ month }}">
                                     <input type="hidden" name="category" value="{{ item.categoria }}">
                                     <button type="submit" class="btn btn-link p-0 text-decoration-none" 
-                                            title="{{ 'Destravar' if item.is_locked else 'Travar' }}">
+                                            title="{{ 'Destravar (Permitir alteração automática)' if item.is_locked else 'Travar (Proteger valor)' }}">
                                         <i class="fas {{ 'fa-lock text-warning' if item.is_locked else 'fa-lock-open text-muted opacity-25' }}"></i>
                                     </button>
                                 </form>
@@ -101,8 +139,8 @@
                         </div>
 
                         <div class="d-flex gap-2 mb-2">
-                            <small class="text-warning">⚖️ C1: R$ {{ "{:,.0f}".format(item.curva_1 if item.curva_1 is defined else 0) }}</small>
-                            <small class="text-success">🚀 C2: R$ {{ "{:,.0f}".format(item.curva_2 if item.curva_2 is defined else 0) }}</small>
+                            <small class="text-primary" title="Cenário de Equilíbrio">⚖️ C1: R$ {{ "{:,.0f}".format(item.curva_1 if item.curva_1 is defined else 0) }}</small>
+                            <small class="text-success" title="Cenário de 15% Lucro">🚀 C2: R$ {{ "{:,.0f}".format(item.curva_2 if item.curva_2 is defined else 0) }}</small>
                         </div>
 
                         <div class="progress mb-2" style="height: 8px;">
@@ -110,13 +148,13 @@
                         </div>
 
                         <div class="d-flex justify-content-between small text-muted mb-3">
-                            <span>YTD: R$ {{ "{:,.0f}".format(item.total_coberto) }}</span>
-                            <span>Restante: R$ {{ "{:,.0f}".format(item.saldo_restante if item.saldo_restante is defined else 0) }}</span>
+                            <span>Realizado: R$ {{ "{:,.0f}".format(item.realizado) }}</span>
+                            <span>Saldo: R$ {{ "{:,.0f}".format(item.saldo_restante if item.saldo_restante is defined else 0) }}</span>
                         </div>
 
                         <button class="btn btn-sm btn-outline-dark w-100" 
                                 onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ item.curva_1 if item.curva_1 is defined else 0 }}, {{ item.curva_2 if item.curva_2 is defined else 0 }})">
-                            <i class="fas fa-chart-line me-2"></i>Detalhar & Analisar
+                            <i class="fas fa-chart-line me-2"></i>Detalhar & Analisar com IA
                         </button>
                     </div>
                 </div>
@@ -126,87 +164,81 @@
     </div>
 
     <div class="tab-pane fade" id="monthly-pane" role="tabpanel">
-    
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-body bg-light d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-calendar-alt me-2"></i>Período de Referência</h5>
-            <form action="{{ url_for('goals') }}" method="GET" class="d-flex gap-2">
-                <input type="hidden" name="year" value="{{ year }}">
-                <input type="hidden" name="month" value="{{ month }}">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body bg-light d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-calendar-alt me-2"></i>Período Tático</h5>
+                <form action="{{ url_for('goals') }}" method="GET" class="d-flex gap-2">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <select name="month" class="form-select" onchange="this.form.submit()">
+                        {% for m in range(1, 13) %}
+                        <option value="{{ m }}" {{ 'selected' if m == month }}>Mês {{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </div>
+        </div>
 
-                <select name="month" class="form-select" onchange="window.location.href='/goals?year={{ year }}&month=' + this.value">
-                    {% for m in range(1, 13) %}
-                    <option value="{{ m }}" {{ 'selected' if m == month }}>Mês {{ m }}</option>
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm bg-primary text-white">
+                    <div class="card-body text-center">
+                        <small class="text-uppercase opacity-75">Entrada Prevista</small>
+                        <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.income) }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm {{ 'bg-danger' if monthly_status.kpis.cash_burn < 0 else 'bg-success' }} text-white">
+                    <div class="card-body text-center">
+                        <small class="text-uppercase opacity-75">Resultado Caixa</small>
+                        <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.cash_burn) }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm bg-dark text-white">
+                    <div class="card-body text-center">
+                        <small class="text-uppercase opacity-75">Sobra Econômica</small>
+                        <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.economic_result) }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive bg-white rounded shadow-sm">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Categoria</th>
+                        <th class="text-center">Gasto Real</th>
+                        <th class="text-center">Cota GPS (Alvo)</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-end">Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in monthly_status.rows %}
+                    <tr>
+                        <td class="fw-bold">{{ row.category }}</td>
+                        <td class="text-center">R$ {{ "{:,.0f}".format(row.realizado_mes) }}</td>
+                        <td class="text-center text-muted">R$ {{ "{:,.0f}".format(row.cota_mensal) }}</td>
+                        <td class="text-center">
+                            {% if row.is_alert %}
+                            <span class="badge bg-danger">Estourou</span>
+                            {% else %}
+                            <span class="badge bg-success">Ok</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-success" onclick="openProvisionModal('{{ row.category }}')">
+                                <i class="fas fa-piggy-bank me-1"></i> Guardar
+                            </button>
+                        </td>
+                    </tr>
                     {% endfor %}
-                </select>
-                <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="2025" {{ 'selected' if year == 2025 }}>2025</option>
-                    <option value="2026" {{ 'selected' if year == 2026 }}>2026</option>
-                </select>
-            </form>
+                </tbody>
+            </table>
         </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm bg-primary text-white">
-                <div class="card-body text-center">
-                    <small class="text-uppercase opacity-75">Receita Líquida (Mês)</small>
-                    <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.income) }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm {{ 'bg-danger' if monthly_status.kpis.cash_burn < 0 else 'bg-success' }} text-white">
-                <div class="card-body text-center">
-                    <small class="text-uppercase opacity-75">Resultado de Caixa (Realizado)</small>
-                    <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.cash_burn) }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm bg-dark text-white">
-                <div class="card-body text-center">
-                    <small class="text-uppercase opacity-75">Margem GPS (Disponível)</small>
-                    <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.economic_result) }}</h3>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="table-responsive bg-white rounded shadow-sm">
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-dark">
-                <tr>
-                    <th>Categoria</th>
-                    <th class="text-center">Gasto Real</th>
-                    <th class="text-center">Cota GPS (Alvo)</th>
-                    <th class="text-center">Status</th>
-                    <th class="text-end">Ação</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in monthly_status.rows %}
-                <tr>
-                    <td class="fw-bold">{{ row.category }}</td>
-                    <td class="text-center">R$ {{ "{:,.0f}".format(row.realizado_mes) }}</td>
-                    <td class="text-center text-muted">R$ {{ "{:,.0f}".format(row.cota_mensal) }}</td>
-                    <td class="text-center">
-                        {% if row.is_alert %}
-                        <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i> Acima da Cota</span>
-                        {% else %}
-                        <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> Sob Controle</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-end">
-                        <button class="btn btn-sm btn-outline-success" onclick="openProvisionModal('{{ row.category }}')">
-                            <i class="fas fa-piggy-bank me-1"></i> Guardar
-                        </button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
     </div>
 </div>
 
@@ -219,65 +251,42 @@
             </div>
             <div class="modal-body p-0">
                 <div class="row g-0 h-100">
-                    <div class="col-lg-6 p-4 border-end bg-white">
+                    <div class="col-lg-6 p-4 border-end bg-white d-flex flex-column">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="fw-bold text-uppercase" style="letter-spacing: 1px;">📊 Histórico Comparativo (3 Anos)</h6>
+                            <h6 class="fw-bold text-uppercase text-muted">📊 Comportamento & Tendência</h6>
                             <form action="{{ url_for('goals') }}" method="POST" class="d-flex gap-2">
                                 <input type="hidden" name="action" value="set_goal">
                                 <input type="hidden" name="year" value="{{ year }}">
-                                <input type="hidden" name="month" value="{{ month }}">
                                 <input type="hidden" name="category" id="editCatInput">
                                 <div class="input-group input-group-sm">
-                                    <span class="input-group-text bg-primary text-white">Meta</span>
-                                    <input type="number" name="amount" id="editAmountInput" class="form-control" style="width: 110px;">
+                                    <span class="input-group-text bg-primary text-white">Nova Meta</span>
+                                    <input type="number" name="amount" id="editAmountInput" class="form-control" style="width: 120px;">
                                     <button class="btn btn-primary" type="submit">Salvar</button>
                                 </div>
                             </form>
                         </div>
-                        <div style="position: relative; height: 65vh; width: 100%;">
+                        <div class="flex-grow-1" style="position: relative; width: 100%;">
                             <canvas id="categoryChart"></canvas>
                         </div>
                     </div>
                     
                     <div class="col-lg-6 d-flex flex-column bg-light">
-                        <div class="p-3 border-bottom bg-white">
+                        <div class="p-3 border-bottom bg-white d-flex justify-content-between">
                             <h6 class="mb-0 fw-bold text-success"><i class="fas fa-robot me-2"></i>Consultor Especialista</h6>
                         </div>
-                        <div id="chatBox" class="flex-grow-1 p-3 overflow-auto d-flex align-items-center justify-content-center" style="background-color: #f8f9fa;">
-                            <div id="ai-placeholder" class="text-center">
-                                <i class="fas fa-robot fa-3x text-muted mb-3"></i>
-                                <h6 class="fw-bold">Consultor Estratégico</h6>
-                                <p class="text-muted small">Clique abaixo para que o Gemini 3 analise o histórico e as metas desta categoria.</p>
-                                <button class="btn btn-success btn-sm shadow-sm" onclick="activateAdvisor()">
-                                    <i class="fas fa-bolt me-2"></i>Ativar Conselheiro
-                                </button>
+                        
+                        <div id="chatBox" class="flex-grow-1 p-3 overflow-auto d-flex flex-column">
+                            </div>
+
+                        <div class="p-3 bg-white border-top">
+                            <div class="input-group">
+                                <input type="text" id="userMsg" class="form-control" placeholder="Pergunte algo mais sobre essa categoria..." onkeypress="if(event.key==='Enter') sendMessage()">
+                                <button class="btn btn-success" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="newGoalModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form action="{{ url_for('goals') }}" method="POST">
-                <input type="hidden" name="action" value="set_goal">
-                <input type="hidden" name="year" value="{{ year }}">
-                <input type="hidden" name="month" value="{{ month }}">
-                <div class="modal-header"><h5 class="modal-title">Nova Meta</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body">
-                    <label>Categoria</label>
-                    <select name="category" class="form-select mb-3">
-                        {% for cat in all_categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
-                    </select>
-                    <label>Valor Anual</label>
-                    <input type="number" name="amount" class="form-control" required>
-                </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
-            </form>
         </div>
     </div>
 </div>
@@ -289,11 +298,11 @@
                 <input type="hidden" name="action" value="add_provision">
                 <input type="hidden" name="year" value="{{ year }}">
                 <input type="hidden" name="month" value="{{ month }}">
-                <div class="modal-header"><h5 class="modal-title">Guardar</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header"><h5 class="modal-title">Lançar Provisão/Reserva</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <input type="hidden" name="category" id="provCat">
-                    <label>Valor</label><input type="number" name="amount" class="form-control mb-3" required>
-                    <label>Motivo</label><input type="text" name="memo" class="form-control">
+                    <label>Valor (R$)</label><input type="number" name="amount" class="form-control mb-3" required>
+                    <label>Local/Motivo</label><input type="text" name="memo" class="form-control" placeholder="Ex: NuBank Caixinha">
                 </div>
                 <div class="modal-footer"><button type="submit" class="btn btn-success">Confirmar</button></div>
             </form>
@@ -301,74 +310,117 @@
     </div>
 </div>
 
+<div class="modal fade" id="newGoalModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('goals') }}" method="POST">
+                <input type="hidden" name="action" value="set_goal">
+                <input type="hidden" name="year" value="{{ year }}">
+                <div class="modal-header"><h5 class="modal-title">Criar Nova Meta</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <label>Categoria</label>
+                    <select name="category" class="form-select mb-3">
+                        {% for cat in all_categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+                    </select>
+                    <label>Meta Anual (R$)</label>
+                    <input type="number" name="amount" class="form-control" required>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 let myChart = null;
-let currentCategory = '';
 
-// Lógica de Retentativa para a IA
-async function fetchWithRetry(url, options, retries = 4) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            let response = await fetch(url, options);
-            if (response.ok) return await response.json();
-        } catch (err) {
-            if (i === retries - 1) throw err;
-            console.log(`Tentativa ${i + 1} falhou, tentando novamente...`);
-            await new Promise(res => setTimeout(res, 2000));
-        }
-    }
-}
+// VARIÁVEIS GLOBAIS PARA CONTEXTO DA IA
+let currentCategory = '';
+let currentMeta = 0;
+let currentC1 = 0;
+let currentC2 = 0;
 
 function openProvisionModal(category) {
     document.getElementById('provCat').value = category;
     new bootstrap.Modal(document.getElementById('provisionModal')).show();
 }
 
-// 1. Altere a função openSpecialist para apenas limpar o placeholder
-function openSpecialist(category, currentMeta, c1, c2) {
+// 1. Abertura da Modal Principal
+function openSpecialist(category, meta, c1, c2) {
+    // Salva o contexto nas variáveis globais
     currentCategory = category;
+    currentMeta = meta;
+    currentC1 = c1;
+    currentC2 = c2;
+
+    // Atualiza UI Básica
     document.getElementById('specialistCatName').innerText = category;
     document.getElementById('editCatInput').value = category;
-    document.getElementById('editAmountInput').value = currentMeta;
+    document.getElementById('editAmountInput').value = meta;
     
-    // Resetar o chatBox para o estado do botão inicial toda vez que abrir
+    // Reseta o Chat para o estado "Botão de Ativação"
     const chatBox = document.getElementById('chatBox');
     chatBox.innerHTML = `
-        <div id="ai-placeholder" class="text-center">
-            <i class="fas fa-robot fa-3x text-muted mb-3"></i>
-            <h6 class="fw-bold">Consultor Estratégico</h6>
-            <p class="text-muted small">Clique abaixo para que o Gemini 3 analise esta categoria.</p>
-            <button class="btn btn-success btn-sm shadow-sm" onclick="activateAdvisor()">
-                <i class="fas fa-bolt me-2"></i>Ativar Conselheiro
+        <div class="d-flex flex-column align-items-center justify-content-center h-100 text-center">
+            <i class="fas fa-brain fa-4x text-muted mb-3"></i>
+            <h5 class="fw-bold text-dark">Análise Estratégica</h5>
+            <p class="text-muted mb-4" style="max-width: 80%;">
+                Clique abaixo para comparar sua meta atual com as curvas <strong>C1 (Equilíbrio)</strong> e <strong>C2 (Prosperidade)</strong>.
+            </p>
+            <button class="btn btn-success btn-lg shadow" onclick="activateAdvisor()">
+                <i class="fas fa-bolt me-2"></i>ATIVAR CONSELHEIRO IA
             </button>
         </div>`;
     
     new bootstrap.Modal(document.getElementById('specialistModal')).show();
-    loadChart(category, currentMeta/12, c1/12, c2/12);
+    
+    // Carrega o gráfico com os dados passados (C1/C2 convertidos para mensal)
+    loadChart(category, meta/12, c1/12, c2/12);
 }
 
-// 2. Nova função para o botão "Ativar"
+// 2. Função de Ativação (Onde a mágica do prompt acontece)
 function activateAdvisor() {
     const chatBox = document.getElementById('chatBox');
-    // Remove o botão e coloca o loading
-    chatBox.classList.remove('align-items-center', 'justify-content-center');
-    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-success"></div><p class="mt-2">Gemini 3 Flash processando estratégia...</p></div>';
     
+    // Mostra Loading
+    chatBox.innerHTML = `
+        <div class="d-flex flex-column align-items-center justify-content-center h-100">
+            <div class="spinner-border text-success mb-3" role="status"></div>
+            <p class="text-muted">Analisando histórico e curvas C1/C2...</p>
+        </div>`;
+    
+    // MONTA O PROMPT TÉCNICO
+    // Aqui usamos as variáveis globais para dar "consciência" à IA sobre os valores
+    const contextPrompt = `
+    [CONTEXTO SISTÊMICO - NÃO RESPONDA COMO SE FOSSE DADO, ANALISE]
+    Estou analisando a categoria: "${currentCategory}".
+    
+    DADOS ATUAIS (ANUAL):
+    - Meta Definida pelo Usuário: R$ ${currentMeta}
+    
+    CURVAS DE REFERÊNCIA (REGRAS DE NEGÓCIO):
+    1. Curva C1 (Equilíbrio/Teto): R$ ${currentC1}. (Objetivo: Igualar Receita e Despesa, saldo zero).
+    2. Curva C2 (Prosperidade): R$ ${currentC2}. (Objetivo: Gastar apenas 85% da receita, gerando 15% de caixa).
+    
+    PEDIDO:
+    Com base no histórico desta categoria (que você tem acesso pelo backend) e nestes valores de C1 e C2, qual é a sua recomendação? Devo ajustar minha meta para C1, tentar a C2 ou manter como está? Seja direto e numérico.
+    `;
+
     fetch('/api/chat/send', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
             category: currentCategory, 
-            message: "Por favor, realize uma análise inicial estratégica desta categoria baseada no histórico e metas fornecidos."
+            message: contextPrompt // Envia o prompt rico
         })
     })
     .then(r => r.json())
     .then(data => {
         chatBox.innerHTML = ''; // Limpa o loading
-        appendMessage(data.response, true);
+        appendMessage(data.response, true); // Mostra a resposta da IA
     })
     .catch(err => {
-        chatBox.innerHTML = '<div class="alert alert-danger">Erro ao acionar o consultor.</div>';
+        chatBox.innerHTML = `<div class="alert alert-danger">Erro ao consultar IA: ${err}</div>`;
     });
 }
 
@@ -385,38 +437,29 @@ function loadChart(category, metaMovel, c1Movel, c2Movel) {
                 data: {
                     labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
                     datasets: [
-                        { label: '2024', data: data['2024'], borderColor: '#ccc', borderDash: [5,5], tension: 0.3 },
-                        { label: '2025 (Base)', data: data['2025'], borderColor: '#0d6efd', borderWidth: 2, tension: 0.3 },
-                        { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3 },
-                        { label: 'Meta Definida', data: Array(12).fill(metaMovel), borderColor: '#0d6efd', borderDash: [2, 2], pointRadius: 0 },
-                        { label: 'Limite Equilíbrio (C1)', data: Array(12).fill(c1Movel), borderColor: '#ffc107', borderDash: [5, 5], pointRadius: 0 },
-                        { label: 'Limite Prosperidade (C2)', data: Array(12).fill(c2Movel), borderColor: '#20c997', borderDash: [5, 5], pointRadius: 0 }
+                        { label: '2024', data: data['2024'], borderColor: '#adb5bd', borderDash: [5,5], tension: 0.4, fill: false },
+                        { label: '2025 (Ref)', data: data['2025'], borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', borderWidth: 2, tension: 0.4, fill: true },
+                        { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3, tension: 0.2 },
+                        
+                        // Linhas de Referência (Transformam valores anuais em mensais visualmente)
+                        { label: 'Meta Atual', data: Array(12).fill(metaMovel), borderColor: 'black', borderWidth: 1, pointRadius: 0 },
+                        { label: 'Limite C1 (Equilíbrio)', data: Array(12).fill(c1Movel), borderColor: '#ffc107', borderDash: [10, 5], pointRadius: 0 },
+                        { label: 'Meta C2 (15%)', data: Array(12).fill(c2Movel), borderColor: '#20c997', borderDash: [2, 2], pointRadius: 0 }
                     ]
                 },
-                options: { responsive: true, maintainAspectRatio: false }
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { mode: 'index', intersect: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
             });
         });
-}
-
-function loadChat(category) {
-    const chatBox = document.getElementById('chatBox');
-    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-secondary"></div><p>Aguardando Gemini...</p></div>';
-    
-    fetchWithRetry('/api/chat/init', {
-        method: 'POST', 
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({category: category})
-    })
-    .then(history => {
-        chatBox.innerHTML = '';
-        if (history) {
-            history.forEach(msg => appendMessage(msg.parts[0], msg.role === 'model'));
-        }
-        scrollToBottom();
-    })
-    .catch(err => {
-        chatBox.innerHTML = '<div class="alert alert-danger m-2">Erro ao conectar com a IA após 4 tentativas.</div>';
-    });
 }
 
 function sendMessage() {
@@ -426,7 +469,9 @@ function sendMessage() {
     
     appendMessage(msg, false);
     input.value = '';
-    scrollToBottom();
+    
+    const chatBox = document.getElementById('chatBox');
+    chatBox.scrollTop = chatBox.scrollHeight;
     
     fetch('/api/chat/send', {
         method: 'POST', 
@@ -441,35 +486,16 @@ function appendMessage(text, isModel) {
     const chatBox = document.getElementById('chatBox');
     const bg = isModel ? 'bg-white border' : 'bg-success text-white';
     const align = isModel ? 'align-self-start' : 'align-self-end';
-    const content = isModel && typeof marked !== 'undefined' ? marked.parse(text) : text;
     
-    chatBox.innerHTML += `
-    <div class="d-flex w-100 flex-column ${align} mb-3">
-        <div class="p-3 rounded shadow-sm ${bg}" style="max-width: 85%; font-size: 0.9rem;">${content}</div>
-    </div>`;
-    scrollToBottom();
-}
-
-function scrollToBottom() {
-    const d = document.getElementById('chatBox');
-    d.scrollTop = d.scrollHeight;
-}
-
-function activateAdvisor() {
-    const chatBox = document.getElementById('chatBox');
-    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-success"></div><p>Gemini 3 Flash processando estratégia...</p></div>';
+    // Se tiver a lib 'marked', usa markdown, senão texto puro
+    const content = (isModel && typeof marked !== 'undefined') ? marked.parse(text) : text;
     
-    // Chama a rota de envio com um comando interno para "primeira análise"
-    fetch('/api/chat/send', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({category: currentCategory, message: "Gere uma análise inicial estratégica."})
-    })
-    .then(r => r.json())
-    .then(data => {
-        chatBox.innerHTML = ''; // Limpa e mostra a resposta
-        appendMessage(data.response, true);
-    });
+    const div = document.createElement('div');
+    div.className = `d-flex w-100 flex-column ${align} mb-3 animate-fade-in`;
+    div.innerHTML = `<div class="p-3 rounded shadow-sm ${bg}" style="max-width: 90%; font-size: 0.95rem;">${content}</div>`;
+    
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
 }
 </script>
 {% endblock %}
