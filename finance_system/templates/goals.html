@@ -211,15 +211,15 @@
 </div>
 
 <div class="modal fade" id="specialistModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content" style="height: 85vh;">
+    <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width: 95%;">
+        <div class="modal-content" style="height: 95vh;">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title"><i class="fas fa-microscope me-2"></i>Análise: <span id="specialistCatName"></span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-0">
                 <div class="row g-0 h-100">
-                    <div class="col-lg-8 p-4 border-end bg-white">
+                    <div class="col-lg-6 p-4 border-end bg-white">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6 class="fw-bold text-uppercase" style="letter-spacing: 1px;">📊 Histórico Comparativo (3 Anos)</h6>
                             <form action="{{ url_for('goals') }}" method="POST" class="d-flex gap-2">
@@ -239,15 +239,18 @@
                         </div>
                     </div>
                     
-                    <div class="col-lg-4 d-flex flex-column bg-light">
+                    <div class="col-lg-6 d-flex flex-column bg-light">
                         <div class="p-3 border-bottom bg-white">
                             <h6 class="mb-0 fw-bold text-success"><i class="fas fa-robot me-2"></i>Consultor Especialista</h6>
                         </div>
-                        <div id="chatBox" class="flex-grow-1 p-3 overflow-auto"></div>
-                        <div class="p-3 border-top bg-white">
-                            <div class="input-group">
-                                <input type="text" id="userMsg" class="form-control" placeholder="Pergunte...">
-                                <button class="btn btn-success" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+                        <div id="chatBox" class="flex-grow-1 p-3 overflow-auto d-flex align-items-center justify-content-center" style="background-color: #f8f9fa;">
+                            <div id="ai-placeholder" class="text-center">
+                                <i class="fas fa-robot fa-3x text-muted mb-3"></i>
+                                <h6 class="fw-bold">Consultor Estratégico</h6>
+                                <p class="text-muted small">Clique abaixo para que o Gemini 3 analise o histórico e as metas desta categoria.</p>
+                                <button class="btn btn-success btn-sm shadow-sm" onclick="activateAdvisor()">
+                                    <i class="fas fa-bolt me-2"></i>Ativar Conselheiro
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -321,16 +324,52 @@ function openProvisionModal(category) {
     new bootstrap.Modal(document.getElementById('provisionModal')).show();
 }
 
+// 1. Altere a função openSpecialist para apenas limpar o placeholder
 function openSpecialist(category, currentMeta, c1, c2) {
     currentCategory = category;
     document.getElementById('specialistCatName').innerText = category;
     document.getElementById('editCatInput').value = category;
     document.getElementById('editAmountInput').value = currentMeta;
     
+    // Resetar o chatBox para o estado do botão inicial toda vez que abrir
+    const chatBox = document.getElementById('chatBox');
+    chatBox.innerHTML = `
+        <div id="ai-placeholder" class="text-center">
+            <i class="fas fa-robot fa-3x text-muted mb-3"></i>
+            <h6 class="fw-bold">Consultor Estratégico</h6>
+            <p class="text-muted small">Clique abaixo para que o Gemini 3 analise esta categoria.</p>
+            <button class="btn btn-success btn-sm shadow-sm" onclick="activateAdvisor()">
+                <i class="fas fa-bolt me-2"></i>Ativar Conselheiro
+            </button>
+        </div>`;
+    
     new bootstrap.Modal(document.getElementById('specialistModal')).show();
-    // Passamos meta, curva 1 e curva 2 mensalizadas para o gráfico
     loadChart(category, currentMeta/12, c1/12, c2/12);
-    loadChat(category);
+}
+
+// 2. Nova função para o botão "Ativar"
+function activateAdvisor() {
+    const chatBox = document.getElementById('chatBox');
+    // Remove o botão e coloca o loading
+    chatBox.classList.remove('align-items-center', 'justify-content-center');
+    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-success"></div><p class="mt-2">Gemini 3 Flash processando estratégia...</p></div>';
+    
+    fetch('/api/chat/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            category: currentCategory, 
+            message: "Por favor, realize uma análise inicial estratégica desta categoria baseada no histórico e metas fornecidos."
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        chatBox.innerHTML = ''; // Limpa o loading
+        appendMessage(data.response, true);
+    })
+    .catch(err => {
+        chatBox.innerHTML = '<div class="alert alert-danger">Erro ao acionar o consultor.</div>';
+    });
 }
 
 function loadChart(category, metaMovel, c1Movel, c2Movel) {
@@ -414,6 +453,23 @@ function appendMessage(text, isModel) {
 function scrollToBottom() {
     const d = document.getElementById('chatBox');
     d.scrollTop = d.scrollHeight;
+}
+
+function activateAdvisor() {
+    const chatBox = document.getElementById('chatBox');
+    chatBox.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-success"></div><p>Gemini 3 Flash processando estratégia...</p></div>';
+    
+    // Chama a rota de envio com um comando interno para "primeira análise"
+    fetch('/api/chat/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({category: currentCategory, message: "Gere uma análise inicial estratégica."})
+    })
+    .then(r => r.json())
+    .then(data => {
+        chatBox.innerHTML = ''; // Limpa e mostra a resposta
+        appendMessage(data.response, true);
+    });
 }
 </script>
 {% endblock %}

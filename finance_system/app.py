@@ -369,7 +369,6 @@ def dashboard():
     )
 
 # === 5. METAS E ORÇAMENTO ===
-# === 5. METAS E ORÇAMENTO (CORRIGIDO) ===
 @app.route('/goals', methods=['GET', 'POST'])
 def goals():
     today = date.today()
@@ -533,13 +532,9 @@ def category_history_api(category):
     
 @app.route('/api/chat/init', methods=['POST'])
 def chat_init():
-    """Inicia o chat (ou recupera histórico)"""
     category = request.json.get('category')
-    # Se já tem histórico, retorna ele. Se não, a IA gera a primeira análise.
+    # Apenas recupera o histórico, sem disparar a IA automaticamente
     history = ai_advisor.get_chat_history(category)
-    if not history:
-        initial_analysis = ai_advisor.ask_specialist(category) # Gera msg inicial
-        return jsonify([{'role': 'model', 'parts': [initial_analysis]}])
     return jsonify(history)
 
 @app.route('/api/chat/send', methods=['POST'])
