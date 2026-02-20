@@ -5,39 +5,57 @@ class TransactionRepository:
     """
     Guardião dos Dados (Single Source of Truth).
     """
-    
     def get_year_financials(self, year):
         conn = db_instance.get_connection()
-        query = f"""
+        
+        # 1. Busca Metas de Receita planejadas para o ano
+        query_meta = f"""
+            SELECT SUM(valor_meta) FROM annual_budgets 
+            WHERE ano = {year} 
+            AND (categoria LIKE '%Receita%' OR categoria LIKE '%Salário%' OR categoria LIKE '%Entrada%' OR categoria LIKE '%Rendimento%')
+        """
+        meta_receita = pd.read_sql_query(query_meta, conn).iloc[0,0] or 0.0
+
+        # 2. Busca Transações Reais
+        query_trans = f"""
             SELECT date, amount, category 
             FROM transactions 
             WHERE strftime('%Y', date) = '{year}' 
             AND (category != '⛔ IGNORADO' OR category IS NULL)
         """
-        df = pd.read_sql_query(query, conn)
+        df = pd.read_sql_query(query_trans, conn)
         conn.close()
         
-        if df.empty:
+        if df.empty and meta_receita == 0:
             return {'net_income': 0.0, 'real_expenses': 0.0, 'raw_df': pd.DataFrame()}
 
-        # Saneamento
         is_revenue_cat = df['category'].str.contains('Receita|Salário|Entrada|Rendimento', case=False, na=False)
+        net_income_realizado = df[is_revenue_cat]['amount'].sum()
         
-        # Receita Líquida (Soma tudo de receita, positivo ou negativo)
-        net_income = df[is_revenue_cat]['amount'].sum()
-        
-        # Despesa Real (Soma negativos que não são receita)
         expenses_df = df[~is_revenue_cat & (df['amount'] < 0)].copy()
         expenses_df['amount'] = expenses_df['amount'].abs()
         real_expenses = expenses_df['amount'].sum()
 
+        # Prioridade: Meta de Receita > Realizado
+        final_income = meta_receita if meta_receita > 0 else net_income_realizado
+
         return {
-            'net_income': net_income,
+            'net_income': final_income,        # Base para as Curvas C1 e C2
+            'income_planned': meta_receita,
+            'income_realized': net_income_realizado,
             'real_expenses': real_expenses,
             'raw_df': df,
             'expenses_df': expenses_df,
             'income_df': df[is_revenue_cat]
         }
+
+    def get_income_by_category(self, year):
+        """Retorna o histórico de receitas agrupado por categoria"""
+        financials = self.get_year_financials(year)
+        inc_df = financials['income_df']
+        if inc_df.empty:
+            return pd.DataFrame(columns=['category', 'amount'])
+        return inc_df.groupby('category')['amount'].sum().reset_index()
 
     def get_monthly_breakdown(self, year, month):
         """Retorna os dados focados em um mês específico para o GPS."""

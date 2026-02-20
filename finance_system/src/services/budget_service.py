@@ -106,7 +106,11 @@ class BudgetService:
 
     # === 2. LÓGICA DE METAS (ANUAL) ===
     def init_budget_from_history(self, target_year, base_year):
-        df_base = self.repository.get_expenses_by_category(base_year)
+        """Importa receitas e despesas como metas iniciais."""
+        df_expenses = self.repository.get_expenses_by_category(base_year)
+        df_income = self.repository.get_income_by_category(base_year)
+        df_base = pd.concat([df_expenses, df_income])
+        
         if df_base.empty: return 0
             
         conn = db_instance.get_connection()
@@ -122,24 +126,30 @@ class BudgetService:
         conn.commit()
         conn.close()
         return count
-
+    
     def apply_curve(self, year, curve_type):
-        financials = self.repository.get_year_financials(year) # Usa ano atual para renda
+        """Aplica redução proporcional apenas em DESPESAS, baseando-se na meta de receita."""
+        financials = self.repository.get_year_financials(year)
         net_income = financials['net_income']
         
-        if net_income <= 0: return {"error": "Sem renda líquida registrada."}
+        if net_income <= 0:
+            return {"error": "Sem renda definida (Meta ou Realizada)."}
 
         global_cap = net_income if curve_type == 1 else net_income * 0.90
+        df_all = self.repository.get_budget_vs_real(year)
         
-        df_budget = self.repository.get_budget_vs_real(year)
-        locked_total = df_budget[df_budget['is_locked'] == 1]['valor_meta'].sum()
-        unlocked_df = df_budget[df_budget['is_locked'] == 0]
+        # Filtra apenas DESPESAS (não reduzimos metas de receita)
+        is_rev = df_all['categoria'].str.contains('Receita|Salário|Entrada|Rendimento', case=False, na=False)
+        df_expenses = df_all[~is_rev]
+        
+        locked_total = df_expenses[df_expenses['is_locked'] == 1]['valor_meta'].sum()
+        unlocked_df = df_expenses[df_expenses['is_locked'] == 0]
         unlocked_total = unlocked_df['valor_meta'].sum()
         
         available = global_cap - locked_total
         
         if available < 0:
-            return {"error": f"Travas (R$ {locked_total:.0f}) já excedem o teto (R$ {global_cap:.0f})."}
+            return {"error": f"Gastos fixos (R$ {locked_total:.0f}) excedem o teto (R$ {global_cap:.0f})."}
             
         if unlocked_total > available and unlocked_total > 0:
             factor = available / unlocked_total
@@ -152,32 +162,25 @@ class BudgetService:
             conn.close()
             return {"success": True}
         
-        return {"success": True, "message": "Já está dentro da curva."}
+        return {"success": True, "message": "Orçamento já está dentro da curva."}
 
     def get_budget_summary(self, year):
-        # 1. Busca dados base e financeiros
-        df = self.repository.get_budget_vs_real(year) #
-        financials = self.repository.get_year_financials(year) #
-        net_income = financials['net_income'] #
+        """Corrigida a identação que causava erro no VS Code."""
+        df = self.repository.get_budget_vs_real(year)
+        financials = self.repository.get_year_financials(year)
+        net_income = financials['net_income']
         
-        # 2. Peso da categoria para distribuição proporcional da renda
-        total_meta_atual = df['valor_meta'].sum() #
-        
+        total_meta_atual = df['valor_meta'].sum()
         summary = []
-        today = date.today() #
-        months_left = 13 - today.month if year == today.year else 1 #
-        months_left = max(1, months_left) #
+        today = date.today()
+        months_left = max(1, 13 - today.month if year == today.year else 1)
 
         for _, row in df.iterrows():
-            if not row['categoria']: continue #
+            if not row['categoria']: continue
             
-            meta_atual = row['valor_meta'] #
-            total_coberto = row['realizado'] + row['guardado'] #
-            
-            # Cálculo das Curvas de Referência (Baseado na sua lógica de 100% e 90% da renda)
+            meta_atual = row['valor_meta']
+            total_coberto = row['realizado'] + row['guardado']
             peso = meta_atual / total_meta_atual if total_meta_atual > 0 else 0
-            valor_curva_1 = net_income * peso  # Equilíbrio
-            valor_curva_2 = (net_income * 0.90) * peso # Prosperidade
             
             summary.append({
                 'categoria': row['categoria'],
@@ -187,12 +190,11 @@ class BudgetService:
                 'is_locked': bool(row['is_locked']),
                 'total_coberto': total_coberto,
                 'saldo_restante': meta_atual - total_coberto,
-                'curva_1': valor_curva_1,
-                'curva_2': valor_curva_2,
+                'curva_1': net_income * peso,
+                'curva_2': (net_income * 0.90) * peso,
                 'cota_mensal': max(0, (meta_atual - total_coberto) / months_left)
             })
-            
-        return sorted(summary, key=lambda x: x['meta'], reverse=True) 
+        return sorted(summary, key=lambda x: x['meta'], reverse=True)
 
     def toggle_lock(self, year, category):
         conn = db_instance.get_connection()
