@@ -46,18 +46,30 @@
 <div class="tab-content" id="budgetTabsContent">
     
     <div class="tab-pane fade show active" id="annual-pane" role="tabpanel">
-        {% set ns = namespace(total_meta=0, total_c1=0, total_c2=0) %}
-    {% for item in summary %}
-        {% set ns.total_meta = ns.total_meta + item.meta %}
-        {% set ns.total_c1 = ns.total_c1 + (item.curva_1 if item.curva_1 is defined else 0) %}
-        {% set ns.total_c2 = ns.total_c2 + (item.curva_2 if item.curva_2 is defined else 0) %}
-    {% endfor %}
-
-    {% set gap_c1 = ns.total_meta - ns.total_c1 %}
-    {% set gap_c2 = ns.total_meta - ns.total_c2 %}
-
-    <div class="card mb-4 border-0 shadow-sm" style="background: linear-gradient(to right, #f8f9fa, #e9ecef);">
-        <div class="card-body p-3">
+        
+        <div class="alert {{ 'alert-danger' if status_geral.gap_curva_1 < 0 else 'alert-success' }} shadow-sm mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong><i class="fas fa-balance-scale me-2"></i> Curva de Equilíbrio (C1):</strong> 
+                    {% if status_geral.gap_curva_1 < 0 %}
+                        Você precisa reduzir <b class="fs-5">R$ {{ status_geral.gap_curva_1 | abs | round(2) }}</b> nas suas metas anuais.
+                    {% else %}
+                        Parabéns! O seu orçamento cabe na sua renda. Folga: R$ {{ status_geral.gap_curva_1 | round(2) }}.
+                    {% endif %}
+                </div>
+                
+                <div class="text-end border-start ps-3 {{ 'text-muted' if status_geral.gap_curva_2 < 0 else 'text-success fw-bold' }}">
+                    <small>Curva Prosperidade (C2):</small><br>
+                    {% if status_geral.gap_curva_2 < 0 %}
+                        Falta R$ {{ status_geral.gap_curva_2 | abs | round(2) }}
+                    {% else %}
+                        <i class="fas fa-star"></i> Atingida
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="card mb-4 border-0 shadow-sm" style="background: linear-gradient(to right, #f8f9fa, #e9ecef);">
+            <div class="card-body p-3">
             <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-calculator me-2"></i>Status do Ajuste Orçamentário</h6>
             
             <div class="row text-center align-items-center">

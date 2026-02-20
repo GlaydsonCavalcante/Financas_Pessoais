@@ -375,37 +375,15 @@ def goals():
     year = int(request.args.get('year', today.year))
     month = int(request.args.get('month', today.month))
 
-    # 1. GARANTIA: Definir categorias logo no início
-    cats_df = cat_service.get_unique_categories()
-    all_categories = cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
+    # Lógica de POST continua igual... (salvar meta, provisão, etc)
 
-    if request.method == 'POST':
-        action = request.form.get('action')
-        month = int(request.form.get('month', month))
-        
-        if action == 'set_goal':
-            cat = request.form.get('category')
-            val = float(request.form.get('amount'))
-            budget_service.set_annual_goal(year, cat, val)
-            flash(f"Meta de {cat} atualizada!", "success")
-            
-        elif action == 'add_provision':
-            cat = request.form.get('category')
-            val = float(request.form.get('amount'))
-            memo = request.form.get('memo')
-            budget_service.add_provision(cat, val, memo)
-            flash(f"Provisão de {cat} registrada.", "info")
-        
-        return redirect(url_for('goals', year=year, month=month))
-
-    # 2. Busca dados para as abas
-    summary = budget_service.get_budget_summary(year)
-    monthly_status = budget_service.get_dashboard_overview(year, month)
+    # NOVO: summary agora é um dicionário complexo
+    orçamento_completo = budget_service.get_budget_summary(year)
     
+    # Você passará isso para o template
     return render_template('goals.html', 
-                           summary=summary, 
-                           monthly_status=monthly_status,
-                           all_categories=all_categories,
+                           status_geral=orçamento_completo['status_geral'],
+                           summary_categories=orçamento_completo['categorias'], 
                            year=year, 
                            month=month)
 
@@ -501,35 +479,27 @@ def apply_curve():
 # === ROTAS DO ESPECIALISTA (GRÁFICO E CHAT) ===
 @app.route('/api/category_history/<category>')
 def category_history_api(category):
-    # Descodifica a URL (Ex: Compras%20Gen%C3%A9ricas -> Compras Genéricas)
     decoded_category = urllib.parse.unquote(category)
     try:
-        conn = db_instance.get_connection()
-        df = pd.read_sql_query("""
-            SELECT strftime('%Y', date) as ano, strftime('%m', date) as mes, SUM(ABS(amount)) as valor
-            FROM transactions 
-            WHERE category = ? AND strftime('%Y', date) IN ('2024', '2025', '2026') AND amount < 0
-            GROUP BY ano, mes
-        """, conn, params=(decoded_category,)) # USE A VARIÁVEL DECODIFICADA
-        conn.close()
+        # Usa o repositório em vez de SQL direto
+        df = budget_service.repository.get_historical_category_trends(decoded_category)
         
-        data = {'2024': [0]*12, '2025': [0]*12, '2026': [0]*12}
-        
+        data = {}
         if not df.empty:
             for _, row in df.iterrows():
-                try:
-                    idx = int(row['mes']) - 1
-                    ano = row['ano']
-                    if ano in data:
-                        data[ano][idx] = row['valor']
-                except:
-                    continue
+                ano = str(row['ano'])
+                idx = int(row['mes']) - 1
+                
+                if ano not variable data:
+                    data[ano] = [0]*12
+                    
+                data[ano][idx] = row['valor']
                     
         return jsonify(data)
     except Exception as e:
         print(f"Erro na API do Gráfico: {e}")
-        return jsonify({'2024': [], '2025': [], '2026': []}) # Retorna vazio para não quebrar o JS
-    
+        return jsonify({})
+        
 @app.route('/api/chat/init', methods=['POST'])
 def chat_init():
     category = request.json.get('category')

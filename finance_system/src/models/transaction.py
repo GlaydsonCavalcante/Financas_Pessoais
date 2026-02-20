@@ -22,6 +22,7 @@ class Transaction:
     amount: float
     source: str
     category: Optional[str] = None
+    account: Optional[str] = None
     is_manual: bool = False
     hash_id: Optional[str] = None
 
@@ -42,6 +43,7 @@ class Transaction:
             "Descrição": self.description,
             "Valor": self.amount,
             "Fonte": self.source,
+            "Conta": self.account,
             "Categoria": self.category,
             "Status Tempo": "Futuro" if self.is_future else "Realizado"
-        }
+        } 

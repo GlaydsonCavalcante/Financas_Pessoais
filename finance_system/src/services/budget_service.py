@@ -3,12 +3,78 @@ from datetime import date
 from src.database.connection import db_instance
 from src.database.repository import TransactionRepository
 
-pd.set_option('future.no_silent_downcasting', True)
-
 class BudgetService:
     def __init__(self):
         self.repository = TransactionRepository()
-          
+
+    def get_budget_summary(self, year):
+        """
+        Retorna o Plano Orçamental Completo:
+        - Status Geral (Gap para as Curvas)
+        - Categorias detalhadas com Cota Mensal Hidráulica
+        """
+        df = self.repository.get_budget_vs_real(year)
+        renda_base_anual = self.repository.get_base_income_for_year(year)
+        
+        today = date.today()
+        # Se for o ano atual, calcula meses restantes. Se for ano futuro, 12. Se passado, 1.
+        if year == today.year:
+            months_left = max(1, 13 - today.month)
+        elif year > today.year:
+            months_left = 12
+        else:
+            months_left = 1
+
+        summary_categories = []
+        total_metas_despesas = 0
+
+        for _, row in df.iterrows():
+            cat = row['categoria']
+            if not cat or 'Receita' in cat or 'Salário' in cat: 
+                continue # Ignoramos receitas no cálculo de cortes
+
+            meta_anual = row['valor_meta']
+            realizado_ytd = row['realizado']
+            guardado_ytd = row['guardado']
+            
+            total_coberto = realizado_ytd + guardado_ytd
+            saldo_restante_ano = meta_anual - total_coberto
+            
+            # CÁLCULO HIDRÁULICO: Ajusta o cinto pros meses seguintes
+            cota_mensal_sugerida = max(0, saldo_restante_ano / months_left) if meta_anual > 0 else 0
+
+            total_metas_despesas += meta_anual
+
+            summary_categories.append({
+                'categoria': cat,
+                'meta': meta_anual,
+                'realizado': realizado_ytd,
+                'guardado': guardado_ytd,
+                'is_locked': bool(row['is_locked']),
+                'total_coberto': total_coberto,
+                'saldo_restante': saldo_restante_ano,
+                'cota_mensal': cota_mensal_sugerida
+            })
+
+        # CÁLCULO DO GAP (Feedback Loop)
+        # Curva 1: 100% da Renda (Break-even)
+        # Curva 2: 90% da Renda (Prosperidade)
+        teto_c1 = renda_base_anual * 1.0
+        teto_c2 = renda_base_anual * 0.9
+
+        gap_c1 = teto_c1 - total_metas_despesas
+        gap_c2 = teto_c2 - total_metas_despesas
+
+        return {
+            "status_geral": {
+                "renda_base_anual": renda_base_anual,
+                "total_metas_despesas": total_metas_despesas,
+                "gap_curva_1": gap_c1, # Se negativo, precisa cortar X. Se positivo, tem folga.
+                "gap_curva_2": gap_c2
+            },
+            "categorias": sorted(summary_categories, key=lambda x: x['meta'], reverse=True)
+        }
+
     # === 1. LÓGICA DO DASHBOARD (MENSAL / GPS) ===
     # ESTE MÉTODO ESTAVA FALTANDO E CAUSOU O ERRO
     def get_dashboard_overview(self, year=None, month=None):
@@ -164,38 +230,6 @@ class BudgetService:
         
         return {"success": True, "message": "Orçamento já está dentro da curva."}
 
-    def get_budget_summary(self, year):
-        """Corrigida a identação que causava erro no VS Code."""
-        df = self.repository.get_budget_vs_real(year)
-        financials = self.repository.get_year_financials(year)
-        net_income = financials['net_income']
-        
-        total_meta_atual = df['valor_meta'].sum()
-        summary = []
-        today = date.today()
-        months_left = max(1, 13 - today.month if year == today.year else 1)
-
-        for _, row in df.iterrows():
-            if not row['categoria']: continue
-            
-            meta_atual = row['valor_meta']
-            total_coberto = row['realizado'] + row['guardado']
-            peso = meta_atual / total_meta_atual if total_meta_atual > 0 else 0
-            
-            summary.append({
-                'categoria': row['categoria'],
-                'meta': meta_atual,
-                'realizado': row['realizado'],
-                'guardado': row['guardado'],
-                'is_locked': bool(row['is_locked']),
-                'total_coberto': total_coberto,
-                'saldo_restante': meta_atual - total_coberto,
-                'curva_1': net_income * peso,
-                'curva_2': (net_income * 0.90) * peso,
-                'cota_mensal': max(0, (meta_atual - total_coberto) / months_left)
-            })
-        return sorted(summary, key=lambda x: x['meta'], reverse=True)
-
     def toggle_lock(self, year, category):
         conn = db_instance.get_connection()
         conn.execute("UPDATE annual_budgets SET is_locked = NOT is_locked WHERE ano = ? AND categoria = ?", (year, category))
@@ -218,3 +252,5 @@ class BudgetService:
                     (date_str, category, amount, memo))
         conn.commit()
         conn.close()
+
+pd.set_option('future.no_silent_downcasting', True)

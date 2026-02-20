@@ -2,134 +2,77 @@ import pandas as pd
 from src.database.connection import db_instance
 
 class TransactionRepository:
-    """
-    Guardião dos Dados (Single Source of Truth).
-    """
-    def get_year_financials(self, year):
+    
+    def get_base_income_for_year(self, year):
+        """Retorna a Renda Base (Meta de Receita) para cálculo do Gap"""
         conn = db_instance.get_connection()
+        cursor = conn.cursor()
         
-        # 1. Busca Metas de Receita planejadas para o ano
-        query_meta = f"""
+        # Privilegia o planeamento anual para o orçamento
+        cursor.execute("""
             SELECT SUM(valor_meta) FROM annual_budgets 
-            WHERE ano = {year} 
+            WHERE ano = ? 
             AND (categoria LIKE '%Receita%' OR categoria LIKE '%Salário%' OR categoria LIKE '%Entrada%' OR categoria LIKE '%Rendimento%')
-        """
-        meta_receita = pd.read_sql_query(query_meta, conn).iloc[0,0] or 0.0
-
-        # 2. Busca Transações Reais
-        query_trans = f"""
-            SELECT date, amount, category 
-            FROM transactions 
-            WHERE strftime('%Y', date) = '{year}' 
-            AND (category != '⛔ IGNORADO' OR category IS NULL)
-        """
-        df = pd.read_sql_query(query_trans, conn)
+        """, (year,))
+        row = cursor.fetchone()
         conn.close()
         
-        if df.empty and meta_receita == 0:
-            return {'net_income': 0.0, 'real_expenses': 0.0, 'raw_df': pd.DataFrame()}
-
-        is_revenue_cat = df['category'].str.contains('Receita|Salário|Entrada|Rendimento', case=False, na=False)
-        net_income_realizado = df[is_revenue_cat]['amount'].sum()
-        
-        expenses_df = df[~is_revenue_cat & (df['amount'] < 0)].copy()
-        expenses_df['amount'] = expenses_df['amount'].abs()
-        real_expenses = expenses_df['amount'].sum()
-
-        # Prioridade: Meta de Receita > Realizado
-        final_income = meta_receita if meta_receita > 0 else net_income_realizado
-
-        return {
-            'net_income': final_income,        # Base para as Curvas C1 e C2
-            'income_planned': meta_receita,
-            'income_realized': net_income_realizado,
-            'real_expenses': real_expenses,
-            'raw_df': df,
-            'expenses_df': expenses_df,
-            'income_df': df[is_revenue_cat]
-        }
-
-    def get_income_by_category(self, year):
-        """Retorna o histórico de receitas agrupado por categoria"""
-        financials = self.get_year_financials(year)
-        inc_df = financials['income_df']
-        if inc_df.empty:
-            return pd.DataFrame(columns=['category', 'amount'])
-        return inc_df.groupby('category')['amount'].sum().reset_index()
-
-    def get_monthly_breakdown(self, year, month):
-        """Retorna os dados focados em um mês específico para o GPS."""
-        financials = self.get_year_financials(year)
-        
-        # Se não tem dados no ano, retorna zerado
-        if financials['raw_df'].empty:
-            return {'income': 0.0, 'total_spent': 0.0, 'breakdown': pd.DataFrame()}
-
-        month_str = f"{year}-{month:02d}"
-        
-        # 1. Renda do Mês
-        inc_df = financials['income_df'].copy()
-        if not inc_df.empty:
-            inc_df['mes'] = pd.to_datetime(inc_df['date']).dt.strftime('%Y-%m')
-            monthly_income = inc_df[inc_df['mes'] == month_str]['amount'].sum()
-        else:
-            monthly_income = 0.0
-            
-        # 2. Despesas do Mês
-        exp_df = financials['expenses_df'].copy()
-        total_spent = 0.0
-        breakdown = pd.DataFrame()
-
-        if not exp_df.empty:
-            exp_df['mes'] = pd.to_datetime(exp_df['date']).dt.strftime('%Y-%m')
-            monthly_expenses = exp_df[exp_df['mes'] == month_str]
-            total_spent = monthly_expenses['amount'].sum()
-            
-            # Agrupa por categoria para o detalhe
-            breakdown = monthly_expenses.groupby('category')['amount'].sum().reset_index()
-            
-        return {
-            'income': monthly_income,
-            'total_spent': total_spent,
-            'breakdown': breakdown
-        }
-
-    def get_expenses_by_category(self, year):
-        """Retorna acumulado do ano por categoria (YTD)."""
-        financials = self.get_year_financials(year)
-        exp_df = financials['expenses_df']
-        
-        if exp_df.empty:
-            return pd.DataFrame(columns=['category', 'amount'])
-            
-        return exp_df.groupby('category')['amount'].sum().reset_index()
+        return row[0] if row and row[0] else 0.0
 
     def get_budget_vs_real(self, year):
+        """Traz todo o cenário do ano numa única chamada consolidada usando SQL puro onde possível"""
         conn = db_instance.get_connection()
+        
         # Metas
-        df_metas = pd.read_sql_query(f"SELECT categoria, valor_meta, is_locked FROM annual_budgets WHERE ano = {year}", conn)
-        # Realizado
-        df_real = self.get_expenses_by_category(year)
-        df_real.rename(columns={'category': 'categoria', 'amount': 'realizado'}, inplace=True)
-        # Guardado
-        df_cofre = pd.read_sql_query(f"""
+        df_metas = pd.read_sql_query("SELECT categoria, valor_meta, is_locked FROM annual_budgets WHERE ano = ?", conn, params=(year,))
+        
+        # Realizado (YTD - Acumulado do Ano)
+        df_real = pd.read_sql_query("""
+            SELECT category as categoria, SUM(ABS(amount)) as realizado 
+            FROM transactions 
+            WHERE strftime('%Y', date) = ? AND amount < 0 AND category != '⛔ IGNORADO'
+            GROUP BY category
+        """, conn, params=(str(year),))
+        
+        # Guardado (Provisões)
+        df_cofre = pd.read_sql_query("""
             SELECT categoria, SUM(valor) as guardado 
             FROM budget_provisions 
-            WHERE strftime('%Y', data) = '{year}' AND categoria != '⛔ IGNORADO'
+            WHERE strftime('%Y', data) = ? AND categoria != '⛔ IGNORADO'
             GROUP BY categoria
-        """, conn)
+        """, conn, params=(str(year),))
+        
         conn.close()
         
+        # Unifica os dados
         df = pd.merge(df_metas, df_real, on='categoria', how='outer')
         df = pd.merge(df, df_cofre, on='categoria', how='outer')
         return df.fillna(0)
 
-    def get_provisions_sum(self, year):
-        """Total geral guardado no cofre."""
+    def get_monthly_kpis(self, year, month):
+        """Substitui o uso de Pandas nas rotas do dashboard por SQL otimizado"""
         conn = db_instance.get_connection()
-        val = pd.read_sql_query(f"""
-            SELECT SUM(valor) FROM budget_provisions 
-            WHERE strftime('%Y', data) = '{year}' AND categoria != '⛔ IGNORADO'
-        """, conn).iloc[0,0]
+        cursor = conn.cursor()
+        month_str = f"{year}-{month:02d}"
+        
+        cursor.execute("SELECT SUM(amount) FROM transactions WHERE strftime('%Y-%m', date) = ? AND amount > 0", (month_str,))
+        inc = cursor.fetchone()[0] or 0.0
+        
+        cursor.execute("SELECT SUM(ABS(amount)) FROM transactions WHERE strftime('%Y-%m', date) = ? AND amount < 0 AND category != '⛔ IGNORADO'", (month_str,))
+        exp = cursor.fetchone()[0] or 0.0
+        
         conn.close()
-        return val if val else 0.0
+        return {'income': inc, 'expenses': exp}
+        
+    def get_historical_category_trends(self, category):
+        """Nova função para alimentar o gráfico do chat sem hardcoding de anos"""
+        conn = db_instance.get_connection()
+        df = pd.read_sql_query("""
+            SELECT strftime('%Y', date) as ano, strftime('%m', date) as mes, SUM(ABS(amount)) as valor
+            FROM transactions 
+            WHERE category = ? AND amount < 0
+            GROUP BY ano, mes
+            ORDER BY ano, mes
+        """, conn, params=(category,))
+        conn.close()
+        return df 
