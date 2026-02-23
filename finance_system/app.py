@@ -1,4 +1,3 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
 import pandas as pd
 from datetime import date, timedelta
@@ -45,17 +44,13 @@ def home():
 def import_files():
     results = None
     if request.method == 'POST':
-        # Recebe lista de arquivos
         uploaded_files = request.files.getlist('files')
         
-        # Patch Rápido: O ImporterService espera objetos com atributo .name
-        # Os FileStorage do Flask têm .filename. Vamos ajustar dinamicamente.
         for f in uploaded_files:
             f.name = f.filename 
             
         if uploaded_files:
             try:
-                # Chama seu serviço existente
                 results = imp_service.process_files(uploaded_files)
                 if results['saved'] > 0:
                     flash(f"Sucesso! {results['saved']} transações importadas.", "success")
@@ -69,16 +64,13 @@ def import_files():
 # === 2. CLASSIFICAÇÃO (Já tínhamos feito) ===
 @app.route('/classify', methods=['GET'])
 def classify():
-    # 1. Recupera parâmetros (Aba, Ordenação, Datas de Férias)
     active_tab = request.args.get('tab', 'single')
     sort_by = request.args.get('sort', 'description')
     sort_dir = request.args.get('dir', 'asc')
     
-    # Parâmetros exclusivos da Aba Férias
     vac_start = request.args.get('vac_start')
     vac_end = request.args.get('vac_end')
     
-    # --- ABA 1: Pendências Individuais ---
     df_pending = cat_service.get_pending_transactions()
     
     unique_items = []
@@ -87,7 +79,6 @@ def classify():
     transactions_detail = []
     
     if not df_pending.empty:
-        # Ranking alfabético
         ranking = df_pending['description'].value_counts().reset_index()
         ranking.columns = ['description', 'count']
         ranking = ranking.sort_values(by='description', ascending=True)
@@ -111,7 +102,6 @@ def classify():
                     'clean_name': clean_name
                 }
 
-    # --- ABA 2: Pendências em Lote ---
     df_batch = cat_service.get_grouped_pending()
     if not df_batch.empty:
         ascending = (sort_dir == 'asc')
@@ -123,25 +113,19 @@ def classify():
             df_batch = df_batch.sort_values(by='description', ascending=ascending)
     batch_data = df_batch.to_dict('records') if not df_batch.empty else []
 
-    # --- ABA 3: MODO FÉRIAS (NOVO) ---
     vacation_candidates = []
     vacation_protected = []
     
     if active_tab == 'vacation' and vac_start and vac_end:
         try:
-            # Chama o serviço que você já tem (preview_vacation_mode)
             df_to_update, df_protected = cat_service.preview_vacation_mode(vac_start, vac_end)
-            
             if not df_to_update.empty:
                 vacation_candidates = df_to_update.to_dict('records')
-            
             if not df_protected.empty:
                 vacation_protected = df_protected.to_dict('records')
-                
         except Exception as e:
             flash(f"Erro ao buscar período de férias: {e}", "danger")
 
-    # --- GERAL ---
     cats_df = cat_service.get_unique_categories()
     categories = [CATEGORY_IGNORE] + cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
 
@@ -154,12 +138,10 @@ def classify():
         transactions=transactions_detail,
         parcel_info=parcel_info,
         batch_data=batch_data,
-        # Dados de Férias
         vacation_candidates=vacation_candidates,
         vacation_protected=vacation_protected,
         vac_start=vac_start,
         vac_end=vac_end,
-        # Comuns
         categories=categories,
         total_pending=len(df_pending),
         current_sort=sort_by,
@@ -168,19 +150,14 @@ def classify():
 
 @app.route('/classify/batch', methods=['POST'])
 def classify_batch():
-    """Processa a ação da Aba de Lote (Mantendo a Ordenação)"""
-    
-    # 1. Recupera o estado atual da ordenação (Inputs Ocultos)
     current_sort = request.form.get('keep_sort', 'description')
     current_dir = request.form.get('keep_dir', 'asc')
 
     try:
         selected_descriptions = request.form.getlist('selected_descriptions')
-        
         raw_category = request.form.get('batch_category')
         new_category = request.form.get('new_batch_category')
         final_category = new_category if raw_category == 'NEW' else raw_category
-        
         create_rule = 'create_rule_batch' in request.form
         
         if not selected_descriptions:
@@ -190,43 +167,31 @@ def classify_batch():
         else:
             count = cat_service.apply_batch_by_description(selected_descriptions, final_category, create_rule)
             flash(f"Sucesso! {count} itens classificados como '{final_category}'.", "success")
-            
     except Exception as e:
         flash(f"Erro: {e}", "danger")
         
-    # 2. Redireciona mantendo a aba E a ordenação
     return redirect(url_for('classify', tab='batch', sort=current_sort, dir=current_dir))
 
 @app.route('/classify/vacation_apply', methods=['POST'])
 def vacation_apply():
-    """Aplica a categoria 'Férias' nos itens selecionados."""
     try:
-        # Recupera IDs marcados no checkbox
         selected_hashes = request.form.getlist('selected_hashes')
-        
         if not selected_hashes:
             flash("Nenhum item selecionado para aplicar férias.", "warning")
         else:
             count = cat_service.apply_vacation_batch(selected_hashes)
             flash(f"Sucesso! {count} lançamentos foram marcados como 'Férias'.", "success")
-            
     except Exception as e:
         flash(f"Erro ao aplicar férias: {e}", "danger")
-        
-    # Volta para a aba de férias (sem as datas para limpar a tela ou mantenha se preferir)
     return redirect(url_for('classify', tab='vacation'))
 
 @app.route('/classify/action', methods=['POST'])
 def classify_action():
-    # ... (Mesmo código que fizemos no passo anterior) ...
-    # Para brevidade, replique a lógica de salvar/unificar aqui
-    # Copie do passo anterior ou me avise se precisar que eu reescreva inteiro
     description = request.form.get('description')
     category = request.form.get('category')
     new_cat = request.form.get('new_category')
     action = request.form.get('action_type')
     apply_rule = 'apply_rule' in request.form
-    
     final_cat = new_cat if new_cat else category
     
     if action == 'unify':
@@ -256,50 +221,28 @@ def classify_action():
 def loans():
     plan = None
     total_value = 0
-    
-    # Valores padrão para manter o formulário preenchido
-    form_data = {
-        'name': '',
-        'installments': 12,
-        'amount': 0.0,
-        'first_date': date.today().strftime('%Y-%m-%d')
-    }
+    form_data = {'name': '', 'installments': 12, 'amount': 0.0, 'first_date': date.today().strftime('%Y-%m-%d')}
 
     if request.method == 'POST':
         try:
             action = request.form.get('action')
-            
-            # Captura dados do form
             name = request.form.get('name')
             installments = int(request.form.get('installments'))
             amount = float(request.form.get('amount'))
             first_date_str = request.form.get('first_date')
             first_date = date.fromisoformat(first_date_str)
 
-            # Atualiza form_data para repassar ao template (UX)
-            form_data = {
-                'name': name,
-                'installments': installments,
-                'amount': amount,
-                'first_date': first_date_str
-            }
-            
-            # Gera os objetos Transaction em memória
-            # O LoanService retorna objetos, não dicionários
+            form_data = {'name': name, 'installments': installments, 'amount': amount, 'first_date': first_date_str}
             plan_objs = loan_service.generate_plan(name, amount, first_date, installments)
             
             if action == 'preview':
-                # CONVERSÃO CRÍTICA:
-                # Transforma Objeto -> Dict com chaves em INGLÊS compatíveis com o HTML
                 plan = []
                 for t in plan_objs:
                     plan.append({
-                        'date': t.date.strftime('%d/%m/%Y'), # Formata data BR
+                        'date': t.date.strftime('%d/%m/%Y'),
                         'description': t.description,
                         'amount': t.amount
                     })
-                
-                # Soma usando o valor float dos objetos originais
                 total_value = sum(t.amount for t in plan_objs)
                     
             elif action == 'save':
@@ -312,13 +255,7 @@ def loans():
         except Exception as e:
             flash(f"Erro interno: {str(e)}", "danger")
 
-    # Passamos form_data para manter os campos preenchidos após o clique
-    return render_template(
-        'loan.html', 
-        plan=plan, 
-        total_value=total_value, 
-        form_data=form_data 
-    )
+    return render_template('loan.html', plan=plan, total_value=total_value, form_data=form_data)
 
 # === 4. DASHBOARD ===
 @app.route('/dashboard')
@@ -337,7 +274,6 @@ def dashboard():
 
     overview = budget_service.get_dashboard_overview(current_year, current_month)
     
-    # KPIs Básicos de Saldo
     conn = db_instance.get_connection()
     total_income = pd.read_sql_query("SELECT SUM(amount) FROM transactions WHERE amount > 0", conn).iloc[0,0] or 0.0
     total_expense = pd.read_sql_query("SELECT SUM(amount) FROM transactions WHERE amount < 0", conn).iloc[0,0] or 0.0
@@ -347,26 +283,17 @@ def dashboard():
     provisions_balance = overview['kpis']['provisions_balance']
     free_balance = real_balance - provisions_balance
     
-    # Consolidação dos Dados
     kpis = {
         'real_balance': int(real_balance),
         'provisions_balance': int(provisions_balance),
         'free_balance': int(free_balance),
-        
-        # Dados do Mês (Vindos do Serviço Aprimorado)
         'monthly_income': overview['kpis']['income'],
-        'total_spent': overview['kpis']['total_spent'], # Novo
-        'cash_burn': overview['kpis']['cash_burn'],     # Novo (Entrada - Saída Real)
+        'total_spent': overview['kpis']['total_spent'],
+        'cash_burn': overview['kpis']['cash_burn'],
         'economic_result': overview['kpis']['economic_result']
     }
 
-    return render_template(
-        'dashboard.html',
-        kpis=kpis,
-        rows=overview['rows'],
-        ref_date=ref_date,
-        today=today
-    )
+    return render_template('dashboard.html', kpis=kpis, rows=overview['rows'], ref_date=ref_date, today=today)
 
 # === 5. METAS E ORÇAMENTO ===
 @app.route('/goals', methods=['GET', 'POST'])
@@ -375,15 +302,36 @@ def goals():
     year = int(request.args.get('year', today.year))
     month = int(request.args.get('month', today.month))
 
-    # Lógica de POST continua igual... (salvar meta, provisão, etc)
+    cats_df = cat_service.get_unique_categories()
+    all_categories = cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
 
-    # NOVO: summary agora é um dicionário complexo
+    if request.method == 'POST':
+        action = request.form.get('action')
+        month = int(request.form.get('month', month))
+        
+        if action == 'set_goal':
+            cat = request.form.get('category')
+            val = float(request.form.get('amount'))
+            budget_service.set_annual_goal(year, cat, val)
+            flash(f"Meta de {cat} atualizada!", "success")
+            
+        elif action == 'add_provision':
+            cat = request.form.get('category')
+            val = float(request.form.get('amount'))
+            memo = request.form.get('memo')
+            budget_service.add_provision(cat, val, memo)
+            flash(f"Provisão de {cat} registrada.", "info")
+        
+        return redirect(url_for('goals', year=year, month=month))
+
     orçamento_completo = budget_service.get_budget_summary(year)
+    monthly_status = budget_service.get_dashboard_overview(year, month)
     
-    # Você passará isso para o template
     return render_template('goals.html', 
                            status_geral=orçamento_completo['status_geral'],
-                           summary_categories=orçamento_completo['categorias'], 
+                           summary_categories=orçamento_completo['categorias'],
+                           monthly_status=monthly_status,
+                           all_categories=all_categories,
                            year=year, 
                            month=month)
 
@@ -400,42 +348,33 @@ def auto_budget():
 def force_curve():
     year = int(request.form.get('year'))
     savings_pct = float(request.form.get('savings_pct', 0))
-    
     report = budget_service.apply_forced_curve(year, savings_pct)
     
     if not report['reductions']:
         flash("Parabéns! Seu orçamento atual já cabe na sua renda (ou você não tem renda cadastrada).", "success")
         return redirect(url_for('goals', year=year))
     
-    # Renderiza a página de metas passando o relatório de cortes
     summary = budget_service.get_budget_summary(year)
     cats_df = cat_service.get_unique_categories()
     all_categories = cats_df[cats_df['Categoria'] != CATEGORY_IGNORE]['Categoria'].tolist()
     
     return render_template('goals.html', summary=summary, all_categories=all_categories, year=year, reduction_report=report)
 
-# === ROTA DO CONSELHEIRO IA ===
 @app.route('/goals/advisor', methods=['GET', 'POST'])
 def goals_advisor():
     year = int(request.args.get('year', date.today().year))
     
     if request.method == 'GET':
-        # 1. Gera os cenários (Matemática + IA)
         scenarios = ai_advisor.generate_scenarios()
         return render_template('advisor_modal.html', scenarios=scenarios, year=year)
     
     elif request.method == 'POST':
-        # 2. Aplica o cenário escolhido
-        chosen_level = request.form.get('chosen_level') # 'level_1', 'level_2', or 'level_3'
-        
-        # Recalcula contexto rápido (ou poderia passar via form, mas recalcular é mais seguro)
+        chosen_level = request.form.get('chosen_level') 
         scenarios = ai_advisor.generate_scenarios()
         categories = scenarios['data']['categories']
         values = scenarios['data'][chosen_level]
         
-        # Salva no Banco
         for cat, val in zip(categories, values):
-            # Transforma mensal em anual (O sistema trabalha com anual)
             annual_val = val * 12
             budget_service.set_annual_goal(year, cat, annual_val)
             
@@ -447,7 +386,6 @@ def goals_advisor():
 @app.route('/goals/init_history', methods=['POST'])
 def init_history():
     year = int(request.form.get('year'))
-    # Usa 2025 como base para preencher 2026
     count = budget_service.init_budget_from_history(target_year=year, base_year=2025)
     flash(f"Orçamento iniciado! {count} categorias copiadas de 2025.", "success")
     return redirect(url_for('goals', year=year))
@@ -460,12 +398,20 @@ def toggle_lock():
     budget_service.toggle_lock(year, category)
     return redirect(url_for('goals', year=year, month=month)) 
 
+# NOVA ROTA AQUI!
+@app.route('/goals/toggle_revenue', methods=['POST'])
+def toggle_revenue():
+    year = request.form.get('year')
+    category = request.form.get('category')
+    budget_service.toggle_revenue(year, category)
+    flash(f"Categoria '{category}' alterada com sucesso!", "success")
+    return redirect(url_for('goals', year=year))
+
 @app.route('/goals/curve', methods=['POST'])
 def apply_curve():
-    """Aplica a Curva 1 (Equilíbrio) ou 2 (Prosperidade)"""
     year = int(request.form.get('year'))
     month = int(request.form.get('month', date.today().month)) 
-    curve_type = int(request.form.get('curve_type')) # 1 ou 2
+    curve_type = int(request.form.get('curve_type')) 
     
     result = budget_service.apply_curve(year, curve_type, month=month)
     
@@ -481,7 +427,6 @@ def apply_curve():
 def category_history_api(category):
     decoded_category = urllib.parse.unquote(category)
     try:
-        # Usa o repositório em vez de SQL direto
         df = budget_service.repository.get_historical_category_trends(decoded_category)
         
         data = {}
@@ -490,7 +435,7 @@ def category_history_api(category):
                 ano = str(row['ano'])
                 idx = int(row['mes']) - 1
                 
-                if ano not variable data:
+                if ano not in data:
                     data[ano] = [0]*12
                     
                 data[ano][idx] = row['valor']
@@ -503,13 +448,11 @@ def category_history_api(category):
 @app.route('/api/chat/init', methods=['POST'])
 def chat_init():
     category = request.json.get('category')
-    # Apenas recupera o histórico, sem disparar a IA automaticamente
     history = ai_advisor.get_chat_history(category)
     return jsonify(history)
 
 @app.route('/api/chat/send', methods=['POST'])
 def chat_send():
-    """Envia pergunta do usuário"""
     data = request.json
     category = data.get('category')
     message = data.get('message')

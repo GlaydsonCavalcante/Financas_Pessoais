@@ -68,91 +68,123 @@
                 </div>
             </div>
         </div>
+
         <div class="card mb-4 border-0 shadow-sm" style="background: linear-gradient(to right, #f8f9fa, #e9ecef);">
             <div class="card-body p-3">
-            <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-calculator me-2"></i>Status do Ajuste Orçamentário</h6>
-            
-            <div class="row text-center align-items-center">
+                <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-calculator me-2"></i>Resumo do Orçamento Anual</h6>
                 
-                <div class="col-md-4 border-end">
-                    <small class="text-muted d-block">Sua Meta Atual (Soma)</small>
-                    <h3 class="fw-bold text-dark">R$ {{ "{:,.0f}".format(ns.total_meta) }}</h3>
-                </div>
-
-                <div class="col-md-4 border-end">
-                    <small class="text-primary fw-bold">Meta C1 (Equilíbrio)</small>
-                    <div class="d-flex justify-content-center align-items-center gap-2">
-                        <span class="text-muted">Teto: {{ "{:,.0f}".format(ns.total_c1) }}</span>
-                    </div>
-                    
-                    {% if gap_c1 > 0 %}
-                        <div class="mt-2">
-                            <span class="badge bg-danger p-2 animate-pulse">
-                                <i class="fas fa-cut me-1"></i> Corte R$ {{ "{:,.0f}".format(gap_c1) }}
-                            </span>
-                        </div>
-                    {% else %}
-                        <div class="mt-2 text-success fw-bold"><i class="fas fa-check-circle"></i> Equilibrado</div>
-                    {% endif %}
-                </div>
-
-                <div class="col-md-4">
-                    <small class="text-success fw-bold">Meta C2 (Prosperidade)</small>
-                    <div class="d-flex justify-content-center align-items-center gap-2">
-                        <span class="text-muted">Alvo: {{ "{:,.0f}".format(ns.total_c2) }}</span>
+                <div class="row text-center align-items-center">
+                    <div class="col-md-4 border-end">
+                        <small class="text-muted d-block">Soma das Metas (Despesas)</small>
+                        <h3 class="fw-bold text-dark">R$ {{ "{:,.0f}".format(status_geral.total_metas_despesas) }}</h3>
                     </div>
 
-                    {% if gap_c2 > 0 %}
-                        <div class="mt-2">
-                            <span class="badge bg-warning text-dark p-2">
-                                <i class="fas fa-bullseye me-1"></i> Reduza R$ {{ "{:,.0f}".format(gap_c2) }}
-                            </span>
+                    <div class="col-md-4 border-end">
+                        <small class="text-primary fw-bold">Renda Base Projetada</small>
+                        <div class="d-flex justify-content-center align-items-center gap-2">
+                            <span class="text-dark fs-5">R$ {{ "{:,.0f}".format(status_geral.renda_base_anual) }}</span>
                         </div>
-                    {% else %}
-                        <div class="mt-2 text-success fw-bold"><i class="fas fa-star"></i> Atingido!</div>
-                    {% endif %}
-                </div>
+                    </div>
 
+                    <div class="col-md-4">
+                        <small class="text-success fw-bold">Alvo Prosperidade (90%)</small>
+                        <div class="d-flex justify-content-center align-items-center gap-2">
+                            <span class="text-dark fs-5">R$ {{ "{:,.0f}".format(status_geral.renda_base_anual * 0.9) }}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            
-            {% if ns.total_meta > 0 %}
-            <div class="progress mt-3" style="height: 10px;">
-                {% set pct_c1 = (ns.total_c1 / ns.total_meta * 100) %}
-                <div class="progress-bar bg-primary opacity-50" role="progressbar" style="width: {{ pct_c1 }}%" title="Coberto pela Receita"></div>
-                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ 100 - pct_c1 }}%" title="Excesso (Prejuízo)"></div>
-            </div>
-            {% endif %}
         </div>
-    </div>
 
+        <h5 class="mt-5 mb-3 fw-bold text-success"><i class="fas fa-arrow-down me-2"></i> Entradas Projetadas (Receitas & PLR)</h5>
         <div class="row">
-            {% for item in summary %}            
+            {% for item in summary_categories if item.is_revenue %}            
+            <div class="col-md-6 mb-3">
+                <div class="card shadow-sm border-0 h-100 border-success border-start border-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            
+                            <div class="d-flex align-items-center gap-2">
+                                <form action="{{ url_for('toggle_lock') }}" method="POST" class="m-0 p-0">
+                                    <input type="hidden" name="year" value="{{ year }}">
+                                    <input type="hidden" name="category" value="{{ item.categoria }}">
+                                    <button type="submit" class="btn btn-link p-0 text-decoration-none" 
+                                            title="{{ 'Destravar' if item.is_locked else 'Travar' }}">
+                                        <i class="fas {{ 'fa-lock text-warning' if item.is_locked else 'fa-lock-open text-muted opacity-25' }}"></i>
+                                    </button>
+                                </form>
+                                
+                                <form action="{{ url_for('toggle_revenue') }}" method="POST" class="m-0 p-0">
+                                    <input type="hidden" name="year" value="{{ year }}">
+                                    <input type="hidden" name="category" value="{{ item.categoria }}">
+                                    <button type="submit" class="btn btn-link p-0 text-decoration-none" 
+                                            title="Transformar em Despesa">
+                                        <i class="fas fa-arrow-circle-down text-danger"></i>
+                                    </button>
+                                </form>
+
+                                <h5 class="card-title mb-0 fw-bold text-success text-truncate" style="max-width: 200px;">
+                                    {{ item.categoria }}
+                                </h5>
+                            </div>
+
+                            <span class="badge bg-light text-dark border">
+                                Meta (Alvo): R$ {{ "{:,.0f}".format(item.meta).replace(',', '.') }}
+                            </span>
+                        </div>
+
+                        <div class="progress mb-2" style="height: 8px;">
+                            <div class="progress-bar bg-success" style="width: {{ (item.realizado / item.meta * 100) if item.meta > 0 else 0 }}%"></div>
+                        </div>
+
+                        <div class="d-flex justify-content-between small text-muted mb-3">
+                            <span>Já Faturado: <b class="text-success">R$ {{ "{:,.0f}".format(item.realizado) }}</b></span>
+                            <span>Falta Faturar: R$ {{ "{:,.0f}".format(item.saldo_restante) }}</span>
+                        </div>
+
+                        <button class="btn btn-sm btn-outline-success w-100" 
+                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ status_geral.renda_base_anual }}, {{ status_geral.renda_base_anual * 0.9 }})">
+                            <i class="fas fa-chart-line me-2"></i>Analisar Histórico
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <h5 class="mt-4 mb-3 fw-bold text-danger"><i class="fas fa-arrow-up me-2"></i> Saídas Planejadas (Orçamento)</h5>
+        <div class="row">
+            {% for item in summary_categories if not item.is_revenue %}            
             <div class="col-md-6 mb-3">
                 <div class="card shadow-sm border-0 h-100 {{ 'border-start border-warning border-4' if item.is_locked else '' }}">
                     <div class="card-body">
-                        
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="d-flex align-items-center gap-2">
                                 <form action="{{ url_for('toggle_lock') }}" method="POST" class="m-0 p-0">
                                     <input type="hidden" name="year" value="{{ year }}">
                                     <input type="hidden" name="category" value="{{ item.categoria }}">
                                     <button type="submit" class="btn btn-link p-0 text-decoration-none" 
-                                            title="{{ 'Destravar (Permitir alteração automática)' if item.is_locked else 'Travar (Proteger valor)' }}">
+                                            title="{{ 'Destravar' if item.is_locked else 'Travar' }}">
                                         <i class="fas {{ 'fa-lock text-warning' if item.is_locked else 'fa-lock-open text-muted opacity-25' }}"></i>
                                     </button>
                                 </form>
+                                
+                                <form action="{{ url_for('toggle_revenue') }}" method="POST" class="m-0 p-0">
+                                    <input type="hidden" name="year" value="{{ year }}">
+                                    <input type="hidden" name="category" value="{{ item.categoria }}">
+                                    <button type="submit" class="btn btn-link p-0 text-decoration-none" 
+                                            title="Transformar em Receita">
+                                        <i class="fas fa-arrow-circle-up text-success"></i>
+                                    </button>
+                                </form>
+
                                 <h5 class="card-title mb-0 fw-bold text-truncate" style="max-width: 200px;">
                                     {{ item.categoria }}
                                 </h5>
                             </div>
                             <span class="badge bg-light text-dark border">
-                                Meta: R$ {{ "{:,.0f}".format(item.meta).replace(',', '.') }}
+                                Meta (Teto): R$ {{ "{:,.0f}".format(item.meta).replace(',', '.') }}
                             </span>
-                        </div>
-
-                        <div class="d-flex gap-2 mb-2">
-                            <small class="text-primary" title="Cenário de Equilíbrio">⚖️ C1: R$ {{ "{:,.0f}".format(item.curva_1 if item.curva_1 is defined else 0) }}</small>
-                            <small class="text-success" title="Cenário de 15% Lucro">🚀 C2: R$ {{ "{:,.0f}".format(item.curva_2 if item.curva_2 is defined else 0) }}</small>
                         </div>
 
                         <div class="progress mb-2" style="height: 8px;">
@@ -160,22 +192,21 @@
                         </div>
 
                         <div class="d-flex justify-content-between small text-muted mb-3">
-                            <span>Realizado: R$ {{ "{:,.0f}".format(item.realizado) }}</span>
-                            <span>Saldo: R$ {{ "{:,.0f}".format(item.saldo_restante if item.saldo_restante is defined else 0) }}</span>
+                            <span>Já Gasto: R$ {{ "{:,.0f}".format(item.realizado) }}</span>
+                            <span>Saldo Restante: R$ {{ "{:,.0f}".format(item.saldo_restante) }}</span>
                         </div>
 
                         <button class="btn btn-sm btn-outline-dark w-100" 
-                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ item.curva_1 if item.curva_1 is defined else 0 }}, {{ item.curva_2 if item.curva_2 is defined else 0 }})">
-                            <i class="fas fa-chart-line me-2"></i>Detalhar & Analisar com IA
+                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ status_geral.renda_base_anual }}, {{ status_geral.renda_base_anual * 0.9 }})">
+                            <i class="fas fa-chart-line me-2"></i>Detalhar & Analisar
                         </button>
                     </div>
                 </div>
             </div>
             {% endfor %}
         </div>
-    </div>
 
-    <div class="tab-pane fade" id="monthly-pane" role="tabpanel">
+    </div> <div class="tab-pane fade" id="monthly-pane" role="tabpanel">
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-body bg-light d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-bold"><i class="fas fa-calendar-alt me-2"></i>Período Tático</h5>
@@ -194,7 +225,7 @@
             <div class="col-md-4">
                 <div class="card border-0 shadow-sm bg-primary text-white">
                     <div class="card-body text-center">
-                        <small class="text-uppercase opacity-75">Entrada Prevista</small>
+                        <small class="text-uppercase opacity-75">Entrada do Mês</small>
                         <h3 class="fw-bold">R$ {{ "{:,.0f}".format(monthly_status.kpis.income) }}</h3>
                     </div>
                 </div>
@@ -251,8 +282,7 @@
                 </tbody>
             </table>
         </div>
-    </div>
-</div>
+    </div> </div>
 
 <div class="modal fade" id="specialistModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width: 95%;">
@@ -345,8 +375,6 @@
 
 <script>
 let myChart = null;
-
-// VARIÁVEIS GLOBAIS PARA CONTEXTO DA IA
 let currentCategory = '';
 let currentMeta = 0;
 let currentC1 = 0;
@@ -357,20 +385,16 @@ function openProvisionModal(category) {
     new bootstrap.Modal(document.getElementById('provisionModal')).show();
 }
 
-// 1. Abertura da Modal Principal
 function openSpecialist(category, meta, c1, c2) {
-    // Salva o contexto nas variáveis globais
     currentCategory = category;
     currentMeta = meta;
     currentC1 = c1;
     currentC2 = c2;
 
-    // Atualiza UI Básica
     document.getElementById('specialistCatName').innerText = category;
     document.getElementById('editCatInput').value = category;
     document.getElementById('editAmountInput').value = meta;
     
-    // Reseta o Chat para o estado "Botão de Ativação"
     const chatBox = document.getElementById('chatBox');
     chatBox.innerHTML = `
         <div class="d-flex flex-column align-items-center justify-content-center h-100 text-center">
@@ -385,51 +409,34 @@ function openSpecialist(category, meta, c1, c2) {
         </div>`;
     
     new bootstrap.Modal(document.getElementById('specialistModal')).show();
-    
-    // Carrega o gráfico com os dados passados (C1/C2 convertidos para mensal)
     loadChart(category, meta/12, c1/12, c2/12);
 }
 
-// 2. Função de Ativação (Onde a mágica do prompt acontece)
 function activateAdvisor() {
     const chatBox = document.getElementById('chatBox');
-    
-    // Mostra Loading
     chatBox.innerHTML = `
         <div class="d-flex flex-column align-items-center justify-content-center h-100">
             <div class="spinner-border text-success mb-3" role="status"></div>
             <p class="text-muted">Analisando histórico e curvas C1/C2...</p>
         </div>`;
     
-    // MONTA O PROMPT TÉCNICO
-    // Aqui usamos as variáveis globais para dar "consciência" à IA sobre os valores
     const contextPrompt = `
     [CONTEXTO SISTÊMICO - NÃO RESPONDA COMO SE FOSSE DADO, ANALISE]
     Estou analisando a categoria: "${currentCategory}".
-    
-    DADOS ATUAIS (ANUAL):
-    - Meta Definida pelo Usuário: R$ ${currentMeta}
-    
-    CURVAS DE REFERÊNCIA (REGRAS DE NEGÓCIO):
-    1. Curva C1 (Equilíbrio/Teto): R$ ${currentC1}. (Objetivo: Igualar Receita e Despesa, saldo zero).
-    2. Curva C2 (Prosperidade): R$ ${currentC2}. (Objetivo: Gastar apenas 85% da receita, gerando 15% de caixa).
-    
-    PEDIDO:
-    Com base no histórico desta categoria (que você tem acesso pelo backend) e nestes valores de C1 e C2, qual é a sua recomendação? Devo ajustar minha meta para C1, tentar a C2 ou manter como está? Seja direto e numérico.
-    `;
+    DADOS ATUAIS (ANUAL): Meta Definida: R$ ${currentMeta}. 
+    CURVAS DE REFERÊNCIA (REGRAS DE NEGÓCIO): 
+    C1 (Equilíbrio): R$ ${currentC1}. C2 (Prosperidade): R$ ${currentC2}.
+    PEDIDO: Com base no histórico desta categoria e nestes valores, qual é a sua recomendação? Seja direto e numérico.`;
 
     fetch('/api/chat/send', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            category: currentCategory, 
-            message: contextPrompt // Envia o prompt rico
-        })
+        body: JSON.stringify({category: currentCategory, message: contextPrompt})
     })
     .then(r => r.json())
     .then(data => {
-        chatBox.innerHTML = ''; // Limpa o loading
-        appendMessage(data.response, true); // Mostra a resposta da IA
+        chatBox.innerHTML = ''; 
+        appendMessage(data.response, true);
     })
     .catch(err => {
         chatBox.innerHTML = `<div class="alert alert-danger">Erro ao consultar IA: ${err}</div>`;
@@ -452,24 +459,12 @@ function loadChart(category, metaMovel, c1Movel, c2Movel) {
                         { label: '2024', data: data['2024'], borderColor: '#adb5bd', borderDash: [5,5], tension: 0.4, fill: false },
                         { label: '2025 (Ref)', data: data['2025'], borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', borderWidth: 2, tension: 0.4, fill: true },
                         { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3, tension: 0.2 },
-                        
-                        // Linhas de Referência (Transformam valores anuais em mensais visualmente)
                         { label: 'Meta Atual', data: Array(12).fill(metaMovel), borderColor: 'black', borderWidth: 1, pointRadius: 0 },
                         { label: 'Limite C1 (Equilíbrio)', data: Array(12).fill(c1Movel), borderColor: '#ffc107', borderDash: [10, 5], pointRadius: 0 },
                         { label: 'Meta C2 (15%)', data: Array(12).fill(c2Movel), borderColor: '#20c997', borderDash: [2, 2], pointRadius: 0 }
                     ]
                 },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom' },
-                        tooltip: { mode: 'index', intersect: false }
-                    },
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
             });
         });
 }
@@ -481,9 +476,6 @@ function sendMessage() {
     
     appendMessage(msg, false);
     input.value = '';
-    
-    const chatBox = document.getElementById('chatBox');
-    chatBox.scrollTop = chatBox.scrollHeight;
     
     fetch('/api/chat/send', {
         method: 'POST', 
@@ -498,8 +490,6 @@ function appendMessage(text, isModel) {
     const chatBox = document.getElementById('chatBox');
     const bg = isModel ? 'bg-white border' : 'bg-success text-white';
     const align = isModel ? 'align-self-start' : 'align-self-end';
-    
-    // Se tiver a lib 'marked', usa markdown, senão texto puro
     const content = (isModel && typeof marked !== 'undefined') ? marked.parse(text) : text;
     
     const div = document.createElement('div');
