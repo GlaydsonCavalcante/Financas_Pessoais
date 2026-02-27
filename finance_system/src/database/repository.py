@@ -143,7 +143,7 @@ class TransactionRepository:
         conn.close()
 
     def get_category_monthly_actuals(self, year, category):
-        """Retorna os valores reais gastos por mês para uma categoria específica no ano."""
+        """Retorna os valores reais gastos/recebidos por mês para uma categoria."""
         conn = db_instance.get_connection()
         query = """
             SELECT strftime('%m', date) as mes, SUM(ABS(amount)) as total
@@ -154,6 +154,14 @@ class TransactionRepository:
         """
         df = pd.read_sql_query(query, conn, params=(str(year), category))
         conn.close()
+        
+        # Garante uma lista de 12 meses (0 a 11)
+        actuals = [0.0] * 12
+        for _, row in df.iterrows():
+            idx = int(row['mes']) - 1
+            if 0 <= idx < 12:
+                actuals[idx] = float(row['total'])
+        return actuals
         
         # Converte para uma lista de 12 meses preenchida com zeros onde não houve gasto
         actuals = [0.0] * 12

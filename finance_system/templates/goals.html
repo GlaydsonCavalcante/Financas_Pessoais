@@ -479,64 +479,99 @@ function loadChart(category, metaAnual, c1Anual, c2Anual, is_revenue) {
     const year = "{{ year }}";
 
     fetch(`/api/category_projection/${safeCategory}?year=${year}`)
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) throw new Error("Erro na comunicação com o servidor.");
+            return r.json();
+        })
         .then(data => {
-            console.log("Dados recebidos da API:", data); // Verifique isso no F12 do navegador
+            if (data.error) {
+                console.error("Erro da API:", data.error);
+                return;
+            }
             
-            if (data.error) return;
+            console.log("Valores processados pelo Backend (Matemática do Excel):", data);
 
             const ctx = document.getElementById('categoryChart').getContext('2d');
             if(myChart) myChart.destroy();
             
+            let datasets = [
+                {
+                    label: 'Realizado Acumulado (YTD)',
+                    data: data.actual, 
+                    borderColor: data.is_revenue ? '#198754' : '#dc3545',
+                    backgroundColor: data.is_revenue ? 'rgba(25, 135, 84, 0.1)' : 'rgba(220, 53, 69, 0.1)',
+                    borderWidth: 4,
+                    pointRadius: 4,
+                    fill: true,
+                    tension: 0
+                },
+                {
+                    label: 'Trajetória da Meta Base',
+                    data: data.meta,
+                    borderColor: '#0d6efd',
+                    borderDash: [5, 5],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0
+                }
+            ];
+
+            // Só adiciona C1 e C2 se NÃO for uma conta de Receita
+            if (!data.is_revenue) {
+                datasets.push({
+                    label: 'Rampa C1 (Equilíbrio)',
+                    data: data.c1,
+                    borderColor: '#ffc107',
+                    borderDash: [2, 2],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0
+                });
+                datasets.push({
+                    label: 'Rampa C2 (Prosperidade)',
+                    data: data.c2,
+                    borderColor: '#20c997',
+                    borderDash: [2, 2],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0
+                });
+            }
+
             myChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: data.labels,
-                    datasets: [
-                        {
-                            label: 'Realizado Acumulado',
-                            data: data.actual, // DEVE ser igual à chave no Python
-                            borderColor: data.is_revenue ? '#198754' : '#dc3545',
-                            backgroundColor: data.is_revenue ? 'rgba(25, 135, 84, 0.1)' : 'rgba(220, 53, 69, 0.1)',
-                            borderWidth: 4,
-                            fill: true,
-                            tension: 0.1
-                        },
-                        {
-                            label: 'Projeção Meta Base',
-                            data: data.meta,
-                            borderColor: '#0d6efd',
-                            borderDash: [5, 5],
-                            borderWidth: 2,
-                            fill: false
-                        },
-                        // Só adiciona C1 e C2 se NÃO for receita
-                        ...(data.is_revenue ? [] : [
-                            {
-                                label: 'Rampa C1 (Equilíbrio)',
-                                data: data.c1,
-                                borderColor: '#ffc107',
-                                borderDash: [2, 2],
-                                borderWidth: 2,
-                                fill: false
-                            },
-                            {
-                                label: 'Rampa C2 (Prosperidade)',
-                                data: data.c2,
-                                borderColor: '#20c997',
-                                borderDash: [2, 2],
-                                borderWidth: 2,
-                                fill: false
-                            }
-                        ])
-                    ]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true } }
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            title: { display: true, text: 'R$ Acumulado' }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': R$ ' + context.parsed.y.toLocaleString('pt-BR');
+                                }
+                            }
+                        }
+                    }
                 }
             });
+        })
+        .catch(err => {
+            console.error("Falha ao carregar gráfico:", err);
+            document.getElementById('categoryChart').parentElement.innerHTML = `<div class="alert alert-danger">Erro ao gerar gráfico: Verifique o log (F12)</div>`;
         });
 }
 

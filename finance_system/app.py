@@ -509,61 +509,79 @@ def extrato_update():
         
     return jsonify({'success': False, 'error': 'Dados incompletos'}), 400
 
+@app.route('/api/category_projection/<path:category>')
+def category_projection_api(category):
+    try:
+        # Pega o ano da URL
+        year_val = request.args.get('year', date.today().year)
+        
+        # 1. Busca metas e informações
+        summary = budget_service.get_budget_summary(int(year_val))
+        
+        # Busca robusta (ignora espaços extras e case sensitive)
+        cat_data = next((item for item in summary['categorias'] if item['categoria'].strip().lower() == category.strip().lower()), None)
+        
+        if not cat_data:
+            return jsonify({'error': 'Categoria não encontrada no orçamento atual.'}), 404
+
+        status_geral = summary['status_geral']
+        
+        # 2. Busca Realizado Mensal do Banco de Dados
+        actuals = budget_service.repository.get_category_monthly_actuals(year_val, cat_data['categoria'])
+        
+        meta_anual = cat_data['meta']
+        is_revenue = cat_data['is_revenue']
+        renda = status_geral['renda_base_anual']
+        despesa_total = status_geral['total_metas_despesas']
+        
+        # Proporção das Curvas C1 e C2
+        fator_c1 = min(1.0, renda / despesa_total) if despesa_total > 0 else 1.0
+        fator_c2 = min(1.0, (renda * 0.9) / despesa_total) if despesa_total > 0 else 1.0
+        
+        meta_c1 = meta_anual * fator_c1 if not is_revenue else meta_anual
+        meta_c2 = meta_anual * fator_c2 if not is_revenue else meta_anual
+
+        proj_meta, proj_c1, proj_c2, real_acum = [], [], [], []
+        acumulado_atual = 0
+        
+        # Define até onde temos "Passado/Realizado"
+        mes_atual = date.today().month if int(year_val) == date.today().year else 12
+        
+        # 3. Matemática do Acumulado (Exatamente como no seu Excel)
+        for i in range(12):
+            if (i + 1) <= mes_atual:
+                # O Passado é imutável: as 4 linhas andam juntas no valor real
+                acumulado_atual += actuals[i]
+                real_acum.append(round(acumulado_atual, 2))
+                proj_meta.append(round(acumulado_atual, 2))
+                proj_c1.append(round(acumulado_atual, 2))
+                proj_c2.append(round(acumulado_atual, 2))
+            else:
+                # O Futuro não tem valor real (fica None/null no JS)
+                real_acum.append(None)
+                meses_restantes = 12 - mes_atual
+                
+                # Rampa hidráulica até ao alvo final
+                inc_meta = (meta_anual - acumulado_atual) / meses_restantes
+                inc_c1 = (meta_c1 - acumulado_atual) / meses_restantes
+                inc_c2 = (meta_c2 - acumulado_atual) / meses_restantes
+                
+                proj_meta.append(round(proj_meta[-1] + inc_meta, 2))
+                proj_c1.append(round(proj_c1[-1] + inc_c1, 2))
+                proj_c2.append(round(proj_c2[-1] + inc_c2, 2))
+
+        return jsonify({
+            'labels': ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+            'actual': real_acum, 
+            'meta': proj_meta,
+            'c1': proj_c1,
+            'c2': proj_c2,
+            'is_revenue': is_revenue
+        })
+        
+    except Exception as e:
+        print(f"Erro na API de projeção: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
-@app.route('/api/category_projection/<category>')
-def category_projection_api(category):
-    decoded_category = urllib.parse.unquote(category)
-    year_val = request.args.get('year', date.today().year)
-    
-    # 1. Busca metas
-    summary = budget_service.get_budget_summary(int(year_val))
-    # Busca a categoria ignorando maiúsculas/minúsculas para evitar erros de match
-    cat_data = next((item for item in summary['categorias'] if item['categoria'].strip().lower() == decoded_category.strip().lower()), None)
-    status_geral = summary['status_geral']
-    
-    if not cat_data:
-        return jsonify({'error': f'Categoria {decoded_category} não encontrada'}), 404
-
-    # 2. Busca Realizado Mensal
-    actuals = budget_service.repository.get_category_monthly_actuals(year_val, cat_data['categoria'])
-    
-    meta_anual = cat_data['meta']
-    is_revenue = cat_data['is_revenue']
-    renda = status_geral['renda_base_anual']
-    despesa_total = status_geral['total_metas_despesas']
-    
-    fator_c1 = min(1.0, renda / despesa_total) if despesa_total > 0 else 1.0
-    fator_c2 = min(1.0, (renda * 0.9) / despesa_total) if despesa_total > 0 else 1.0
-    
-    meta_c1 = meta_anual * fator_c1 if not is_revenue else meta_anual
-    meta_c2 = meta_anual * fator_c2 if not is_revenue else meta_anual
-
-    proj_meta, proj_c1, proj_c2, real_acum = [], [], [], []
-    acumulado_atual = 0
-    mes_atual = date.today().month if int(year_val) == date.today().year else 12
-    
-    for i in range(12):
-        if (i + 1) <= mes_atual:
-            acumulado_atual += actuals[i]
-            real_acum.append(round(acumulado_atual, 2))
-            proj_meta.append(round(acumulado_atual, 2))
-            proj_c1.append(round(acumulado_atual, 2))
-            proj_c2.append(round(acumulado_atual, 2))
-        else:
-            real_acum.append(None)
-            meses_restantes = 12 - mes_atual
-            
-            proj_meta.append(round(proj_meta[-1] + (meta_anual - acumulado_atual) / meses_restantes, 2))
-            proj_c1.append(round(proj_c1[-1] + (meta_c1 - acumulado_atual) / meses_restantes, 2))
-            proj_c2.append(round(proj_c2[-1] + (meta_c2 - acumulado_atual) / meses_restantes, 2))
-
-    return jsonify({
-        'labels': ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
-        'actual': real_acum,  # Verifique se esta chave está escrita exatamente assim
-        'meta': proj_meta,
-        'c1': proj_c1,
-        'c2': proj_c2,
-        'is_revenue': is_revenue
-    })
