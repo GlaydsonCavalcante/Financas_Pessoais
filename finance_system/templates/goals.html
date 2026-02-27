@@ -476,87 +476,65 @@ function activateAdvisor() {
 
 function loadChart(category, metaAnual, c1Anual, c2Anual, is_revenue) {
     const safeCategory = encodeURIComponent(category);
-    const year = {{ year }}; // Pega o ano atual do template
+    const year = "{{ year }}";
 
     fetch(`/api/category_projection/${safeCategory}?year=${year}`)
         .then(r => r.json())
         .then(data => {
+            console.log("Dados recebidos da API:", data); // Verifique isso no F12 do navegador
+            
+            if (data.error) return;
+
             const ctx = document.getElementById('categoryChart').getContext('2d');
             if(myChart) myChart.destroy();
             
-            let datasets = [
-                {
-                    label: 'Realizado Acumulado',
-                    data: data.real,
-                    borderColor: is_revenue ? '#198754' : '#dc3545',
-                    backgroundColor: is_revenue ? 'rgba(25, 135, 84, 0.1)' : 'rgba(220, 53, 69, 0.1)',
-                    borderWidth: 4,
-                    pointRadius: 4,
-                    fill: true,
-                    order: 1
-                },
-                {
-                    label: 'Projeção Meta Base',
-                    data: data.meta,
-                    borderColor: '#0d6efd',
-                    borderDash: [5, 5],
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    fill: false,
-                    order: 2
-                }
-            ];
-
-            // Só adiciona C1 e C2 se não for receita
-            if (!data.is_revenue) {
-                datasets.push({
-                    label: 'Rampa C1 (Equilíbrio)',
-                    data: data.c1,
-                    borderColor: '#ffc107',
-                    borderDash: [2, 2],
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    fill: false,
-                    order: 3
-                });
-                datasets.push({
-                    label: 'Rampa C2 (Prosperidade)',
-                    data: data.c2,
-                    borderColor: '#20c997',
-                    borderDash: [2, 2],
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    fill: false,
-                    order: 4
-                });
-            }
-
             myChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: data.labels,
-                    datasets: datasets
+                    datasets: [
+                        {
+                            label: 'Realizado Acumulado',
+                            data: data.actual, // DEVE ser igual à chave no Python
+                            borderColor: data.is_revenue ? '#198754' : '#dc3545',
+                            backgroundColor: data.is_revenue ? 'rgba(25, 135, 84, 0.1)' : 'rgba(220, 53, 69, 0.1)',
+                            borderWidth: 4,
+                            fill: true,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Projeção Meta Base',
+                            data: data.meta,
+                            borderColor: '#0d6efd',
+                            borderDash: [5, 5],
+                            borderWidth: 2,
+                            fill: false
+                        },
+                        // Só adiciona C1 e C2 se NÃO for receita
+                        ...(data.is_revenue ? [] : [
+                            {
+                                label: 'Rampa C1 (Equilíbrio)',
+                                data: data.c1,
+                                borderColor: '#ffc107',
+                                borderDash: [2, 2],
+                                borderWidth: 2,
+                                fill: false
+                            },
+                            {
+                                label: 'Rampa C2 (Prosperidade)',
+                                data: data.c2,
+                                borderColor: '#20c997',
+                                borderDash: [2, 2],
+                                borderWidth: 2,
+                                fill: false
+                            }
+                        ])
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { position: 'bottom' },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return context.dataset.label + ': R$ ' + context.parsed.y.toLocaleString('pt-BR');
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: { display: true, text: 'Valor Acumulado (R$)' }
-                        }
-                    }
+                    scales: { y: { beginAtZero: true } }
                 }
             });
         });
