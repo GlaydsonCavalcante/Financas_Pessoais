@@ -146,9 +146,13 @@ class BudgetService:
 
     # === NOVAS FUNÇÕES DE CLASSIFICAÇÃO ===
     def toggle_revenue(self, year, category):
-        """Inverte o status: Despesa vira Receita e vice-versa"""
+        """Inverte o status: Despesa vira Receita e vice-versa (com proteção de criação automática)"""
         conn = db_instance.get_connection()
-        conn.execute("UPDATE annual_budgets SET is_revenue = NOT is_revenue WHERE ano = ? AND categoria = ?", (year, category))
+        conn.execute("""
+            INSERT INTO annual_budgets (ano, categoria, valor_meta, is_locked, is_revenue) 
+            VALUES (?, ?, 0, 0, 1)
+            ON CONFLICT(ano, categoria) DO UPDATE SET is_revenue = NOT is_revenue
+        """, (year, category))
         conn.commit()
         conn.close()
 

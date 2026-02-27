@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2><i class="fas fa-list-alt text-primary me-2"></i>Extrato Analítico</h2>
+        <p class="text-muted mb-0">Auditoria detalhada de lançamentos e correção de categorias.</p>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body bg-light">
+        <form action="{{ url_for('extrato') }}" method="GET" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label text-muted small fw-bold">Ano</label>
+                <select name="year" class="form-select">
+                    <option value="2024" {{ 'selected' if year == 2024 }}>2024</option>
+                    <option value="2025" {{ 'selected' if year == 2025 }}>2025</option>
+                    <option value="2026" {{ 'selected' if year == 2026 }}>2026</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted small fw-bold">Mês</label>
+                <select name="month" class="form-select">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {{ 'selected' if m == month }}>{{ "%02d" | format(m) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label text-muted small fw-bold">Filtrar por Categoria</label>
+                <select name="category" class="form-select">
+                    <option value="">-- Todas as Categorias --</option>
+                    {% for cat in all_categories %}
+                    <option value="{{ cat }}" {{ 'selected' if category_filter == cat }}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-filter me-2"></i>Aplicar Filtros
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="ps-4">Data</th>
+                        <th>Descrição do Lançamento</th>
+                        <th>Conta / Origem</th>
+                        <th class="text-end">Valor (R$)</th>
+                        <th style="width: 250px;" class="pe-4">Classificação (Categoria)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in transactions %}
+                    <tr id="row-{{ t.hash_id }}">
+                        <td class="ps-4 text-muted">{{ t.date[8:10] }}/{{ t.date[5:7] }}</td>
+                        <td class="fw-bold">{{ t.description }}</td>
+                        <td><span class="badge bg-secondary opacity-75">{{ t.source }}</span></td>
+                        <td class="text-end fw-bold {{ 'text-success' if t.amount > 0 else 'text-danger' }}">
+                            {{ "{:,.2f}".format(t.amount).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                        </td>
+                        <td class="pe-4">
+                            <select class="form-select form-select-sm border-secondary" 
+                                    onchange="updateCategory('{{ t.hash_id }}', this.value)">
+                                {% if t.category not in all_categories and t.category %}
+                                    <option value="{{ t.category }}" selected>{{ t.category }}</option>
+                                {% endif %}
+                                
+                                {% for cat in all_categories %}
+                                <option value="{{ cat }}" {{ 'selected' if t.category == cat }}>{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            <i class="fas fa-inbox fa-3x mb-3 opacity-25"></i>
+                            <p>Nenhum lançamento encontrado para os filtros selecionados.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateCategory(hashId, newCategory) {
+    const row = document.getElementById(`row-${hashId}`);
+    
+    // Efeito visual de carregamento
+    row.style.opacity = '0.5';
+
+    const formData = new FormData();
+    formData.append('hash_id', hashId);
+    formData.append('category', newCategory);
+
+    fetch("{{ url_for('extrato_update') }}", {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        row.style.opacity = '1';
+        if(data.success) {
+            // Pisca a linha em verde para confirmar que salvou
+            row.style.backgroundColor = '#d1e7dd';
+            setTimeout(() => {
+                row.style.backgroundColor = '';
+            }, 1000);
+        } else {
+            alert("Erro ao atualizar a categoria.");
+        }
+    })
+    .catch(error => {
+        row.style.opacity = '1';
+        alert("Falha na comunicação com o servidor.");
+    });
+}
+</script>
+{% endblock %}

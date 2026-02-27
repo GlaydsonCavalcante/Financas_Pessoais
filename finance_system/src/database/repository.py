@@ -114,3 +114,51 @@ class TransactionRepository:
         """, conn, params=(str(year),))
         conn.close()
         return df
+    
+    def get_transactions_ledger(self, year, month, category=None):
+        """Busca transações para o Extrato Analítico com filtros"""
+        conn = db_instance.get_connection()
+        query = """
+            SELECT hash_id, date, description, amount, source, category 
+            FROM transactions 
+            WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
+        """
+        params = [str(year), f"{int(month):02d}"]
+        
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+            
+        query += " ORDER BY date DESC"
+        
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        return df
+
+    def update_transaction_category(self, hash_id, new_category):
+        """Atualiza a categoria de uma transação específica"""
+        conn = db_instance.get_connection()
+        conn.execute("UPDATE transactions SET category = ? WHERE hash_id = ?", (new_category, hash_id))
+        conn.commit()
+        conn.close()
+
+    def get_category_monthly_actuals(self, year, category):
+        """Retorna os valores reais gastos por mês para uma categoria específica no ano."""
+        conn = db_instance.get_connection()
+        query = """
+            SELECT strftime('%m', date) as mes, SUM(ABS(amount)) as total
+            FROM transactions 
+            WHERE strftime('%Y', date) = ? AND category = ?
+            GROUP BY mes
+            ORDER BY mes ASC
+        """
+        df = pd.read_sql_query(query, conn, params=(str(year), category))
+        conn.close()
+        
+        # Converte para uma lista de 12 meses preenchida com zeros onde não houve gasto
+        actuals = [0.0] * 12
+        for _, row in df.iterrows():
+            idx = int(row['mes']) - 1
+            if 0 <= idx < 12:
+                actuals[idx] = float(row['total'])
+        return actuals

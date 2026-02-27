@@ -143,7 +143,7 @@
                         </div>
 
                         <button class="btn btn-sm btn-outline-success w-100" 
-                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ status_geral.renda_base_anual }}, {{ status_geral.renda_base_anual * 0.9 }})">
+                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ status_geral.renda_base_anual }}, {{ status_geral.total_metas_despesas }}, true)">
                             <i class="fas fa-chart-line me-2"></i>Analisar Histórico
                         </button>
                     </div>
@@ -197,7 +197,7 @@
                         </div>
 
                         <button class="btn btn-sm btn-outline-dark w-100" 
-                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ status_geral.renda_base_anual }}, {{ status_geral.renda_base_anual * 0.9 }})">
+                                onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ status_geral.renda_base_anual }}, {{ status_geral.total_metas_despesas }}, false)">
                             <i class="fas fa-chart-line me-2"></i>Detalhar & Analisar
                         </button>
                     </div>
@@ -377,31 +377,50 @@
 let myChart = null;
 let currentCategory = '';
 let currentMeta = 0;
-let currentC1 = 0;
-let currentC2 = 0;
+let currentC1Target = 0;
+let currentC2Target = 0;
+let currentIsRevenue = false;
 
 function openProvisionModal(category) {
     document.getElementById('provCat').value = category;
     new bootstrap.Modal(document.getElementById('provisionModal')).show();
 }
 
-function openSpecialist(category, meta, c1, c2) {
+function openSpecialist(category, meta, renda_base, total_despesas, is_revenue) {
     currentCategory = category;
     currentMeta = meta;
-    currentC1 = c1;
-    currentC2 = c2;
+    currentIsRevenue = is_revenue;
+    
+    // CÁLCULO PROPORCIONAL DAS CURVAS (A sua regra de negócio aplicada!)
+    currentC1Target = meta;
+    currentC2Target = meta;
+
+    if (!is_revenue && total_despesas > 0) {
+        // C1: Se a despesa for maior que a renda, calcula o % de corte necessário
+        let fatorC1 = renda_base / total_despesas;
+        if (fatorC1 < 1) currentC1Target = meta * fatorC1; 
+
+        // C2: Corte necessário para atingir 90% da renda
+        let fatorC2 = (renda_base * 0.9) / total_despesas;
+        if (fatorC2 < 1) currentC2Target = meta * fatorC2;
+    }
 
     document.getElementById('specialistCatName').innerText = category;
     document.getElementById('editCatInput').value = category;
     document.getElementById('editAmountInput').value = meta;
     
+    // Altera o texto dependendo se é Receita ou Despesa
+    let textDesc = is_revenue 
+        ? `Clique abaixo para analisar o comportamento desta <strong>Receita</strong> e obter projeções com IA.`
+        : `Sua meta atual é R$ ${meta.toFixed(2)}.<br>Para atingir as curvas globais, a meta sugerida aqui seria:<br><b class="text-warning">C1: R$ ${currentC1Target.toFixed(2)}</b> | <b class="text-success">C2: R$ ${currentC2Target.toFixed(2)}</b>.`;
+
     const chatBox = document.getElementById('chatBox');
     chatBox.innerHTML = `
         <div class="d-flex flex-column align-items-center justify-content-center h-100 text-center">
             <i class="fas fa-brain fa-4x text-muted mb-3"></i>
             <h5 class="fw-bold text-dark">Análise Estratégica</h5>
             <p class="text-muted mb-4" style="max-width: 80%;">
-                Clique abaixo para comparar sua meta atual com as curvas <strong>C1 (Equilíbrio)</strong> e <strong>C2 (Prosperidade)</strong>.
+                ${textDesc}
             </p>
             <button class="btn btn-success btn-lg shadow" onclick="activateAdvisor()">
                 <i class="fas fa-bolt me-2"></i>ATIVAR CONSELHEIRO IA
@@ -409,7 +428,9 @@ function openSpecialist(category, meta, c1, c2) {
         </div>`;
     
     new bootstrap.Modal(document.getElementById('specialistModal')).show();
-    loadChart(category, meta/12, c1/12, c2/12);
+    
+    // Passamos os valores divididos por 12 para mostrar a linha mensal no gráfico
+    loadChart(category, meta/12, currentC1Target/12, currentC2Target/12, is_revenue);
 }
 
 function activateAdvisor() {
@@ -417,16 +438,26 @@ function activateAdvisor() {
     chatBox.innerHTML = `
         <div class="d-flex flex-column align-items-center justify-content-center h-100">
             <div class="spinner-border text-success mb-3" role="status"></div>
-            <p class="text-muted">Analisando histórico e curvas C1/C2...</p>
+            <p class="text-muted">Analisando histórico e projetando cenários...</p>
         </div>`;
     
-    const contextPrompt = `
+    // O Prompt da IA agora sabe se é Receita ou Despesa, e sabe a matemática proporcional!
+    let contextPrompt = `
     [CONTEXTO SISTÊMICO - NÃO RESPONDA COMO SE FOSSE DADO, ANALISE]
     Estou analisando a categoria: "${currentCategory}".
-    DADOS ATUAIS (ANUAL): Meta Definida: R$ ${currentMeta}. 
-    CURVAS DE REFERÊNCIA (REGRAS DE NEGÓCIO): 
-    C1 (Equilíbrio): R$ ${currentC1}. C2 (Prosperidade): R$ ${currentC2}.
-    PEDIDO: Com base no histórico desta categoria e nestes valores, qual é a sua recomendação? Seja direto e numérico.`;
+    DADOS ATUAIS (ANUAL): Meta Definida: R$ ${currentMeta}. `;
+
+    if (!currentIsRevenue) {
+        contextPrompt += `
+    CÁLCULO PROPORCIONAL DO SISTEMA: Para que o orçamento global atinja o equilíbrio financeiro, o sistema sugere cortar a meta desta categoria para:
+    Meta C1 (Equilíbrio): R$ ${currentC1Target.toFixed(2)}. 
+    Meta C2 (Prosperidade): R$ ${currentC2Target.toFixed(2)}.
+    PEDIDO: Com base no histórico de gastos desta categoria, você acha viável eu reduzir a meta para os valores das curvas C1 ou C2? Quais estratégias táticas sugere para esse corte? Seja direto.`;
+    } else {
+        contextPrompt += `
+    TIPO DE CONTA: Esta é uma conta de RECEITA / ENTRADA de caixa. (Não aplicar cortes).
+    PEDIDO: Com base na sazonalidade e no histórico de entradas, qual é a sua recomendação estratégica para estabilizar ou maximizar essa receita ao longo do ano?`;
+    }
 
     fetch('/api/chat/send', {
         method: 'POST',
@@ -443,28 +474,90 @@ function activateAdvisor() {
     });
 }
 
-function loadChart(category, metaMovel, c1Movel, c2Movel) {
+function loadChart(category, metaAnual, c1Anual, c2Anual, is_revenue) {
     const safeCategory = encodeURIComponent(category);
-    fetch(`/api/category_history/${safeCategory}`)
+    const year = {{ year }}; // Pega o ano atual do template
+
+    fetch(`/api/category_projection/${safeCategory}?year=${year}`)
         .then(r => r.json())
         .then(data => {
             const ctx = document.getElementById('categoryChart').getContext('2d');
             if(myChart) myChart.destroy();
             
+            let datasets = [
+                {
+                    label: 'Realizado Acumulado',
+                    data: data.real,
+                    borderColor: is_revenue ? '#198754' : '#dc3545',
+                    backgroundColor: is_revenue ? 'rgba(25, 135, 84, 0.1)' : 'rgba(220, 53, 69, 0.1)',
+                    borderWidth: 4,
+                    pointRadius: 4,
+                    fill: true,
+                    order: 1
+                },
+                {
+                    label: 'Projeção Meta Base',
+                    data: data.meta,
+                    borderColor: '#0d6efd',
+                    borderDash: [5, 5],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    order: 2
+                }
+            ];
+
+            // Só adiciona C1 e C2 se não for receita
+            if (!data.is_revenue) {
+                datasets.push({
+                    label: 'Rampa C1 (Equilíbrio)',
+                    data: data.c1,
+                    borderColor: '#ffc107',
+                    borderDash: [2, 2],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    order: 3
+                });
+                datasets.push({
+                    label: 'Rampa C2 (Prosperidade)',
+                    data: data.c2,
+                    borderColor: '#20c997',
+                    borderDash: [2, 2],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    order: 4
+                });
+            }
+
             myChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
-                    datasets: [
-                        { label: '2024', data: data['2024'], borderColor: '#adb5bd', borderDash: [5,5], tension: 0.4, fill: false },
-                        { label: '2025 (Ref)', data: data['2025'], borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', borderWidth: 2, tension: 0.4, fill: true },
-                        { label: '2026 (Atual)', data: data['2026'], borderColor: '#198754', borderWidth: 3, tension: 0.2 },
-                        { label: 'Meta Atual', data: Array(12).fill(metaMovel), borderColor: 'black', borderWidth: 1, pointRadius: 0 },
-                        { label: 'Limite C1 (Equilíbrio)', data: Array(12).fill(c1Movel), borderColor: '#ffc107', borderDash: [10, 5], pointRadius: 0 },
-                        { label: 'Meta C2 (15%)', data: Array(12).fill(c2Movel), borderColor: '#20c997', borderDash: [2, 2], pointRadius: 0 }
-                    ]
+                    labels: data.labels,
+                    datasets: datasets
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': R$ ' + context.parsed.y.toLocaleString('pt-BR');
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Valor Acumulado (R$)' }
+                        }
+                    }
+                }
             });
         });
 }

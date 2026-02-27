@@ -30,9 +30,13 @@
                     </a>
                     
                     <a class="nav-link {{ 'active' if request.endpoint == 'import_files' }}" href="{{ url_for('import_files') }}">
-                        <i class="fas fa-file-import me-2"></i> Extratos
+                        <i class="fas fa-file-import me-2"></i> Ingestão de  Dados
                     </a>
                     
+                    <a href="{{ url_for('extrato') }}" class="nav-link text-white mb-2 rounded hover-effect">
+                        <i class="fas fa-list-alt me-2" style="width: 20px;"></i> Extrato Analítico
+                    </a>
+                                       
                     <a class="nav-link {{ 'active' if request.endpoint == 'classify' }}" href="{{ url_for('classify') }}">
                         <i class="fas fa-tags me-2"></i> Classificar
                         {% if pending_count > 0 %}
