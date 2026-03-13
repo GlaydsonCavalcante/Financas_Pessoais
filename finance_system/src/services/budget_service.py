@@ -15,7 +15,7 @@ class BudgetService:
         if not month: month = today.month
         
         months_left = 13 - month
-        if months_left < 1: months_left = 1 
+        if months_left < 1: months_left = 1
 
         df_ytd = self.repository.get_budget_vs_real(year)
         monthly_data = self.repository.get_monthly_breakdown(year, month)
@@ -34,9 +34,12 @@ class BudgetService:
         total_quotas = 0
         safe_income = income_month if income_month > 0 else 1.0
 
+        # --- NOVO: Cálculo do Percentual Ideal do Ano ---
+        # Ex: Mês 3 de 12 = 25% do ano decorrido.
+        pct_ideal_ano = round((month / 12) * 100, 1)
+
         for _, row in df.iterrows():
             cat = row.get('categoria')
-            # FIM DO HARDCODE NO GPS MENSAL: Só ignora se is_revenue for 1
             is_revenue = bool(row.get('is_revenue', 0))
             if not cat or pd.isna(cat) or is_revenue: 
                 continue
@@ -45,6 +48,9 @@ class BudgetService:
             real_ytd = row.get('realizado', 0)
             saved_ytd = row.get('guardado', 0)
             real_mes = row.get('realizado_mes', 0)
+            
+            # --- NOVO: Percentual Anual Consumido da Categoria ---
+            pct_anual_gasto = (real_ytd / meta * 100) if meta > 0 else 0
             
             gasto_anterior = real_ytd - real_mes
             saldo_disponivel_para_o_ano = meta - (gasto_anterior + saved_ytd)
@@ -64,7 +70,9 @@ class BudgetService:
                 'realizado_mes': int(real_mes),
                 'pct_paid': (real_mes / visual_target * 100),
                 'impact': (real_mes / safe_income * 100),
-                'is_alert': (real_mes > cota_mensal) and (meta > 0)
+                'is_alert': (real_mes > cota_mensal) and (meta > 0),
+                'pct_anual_gasto': pct_anual_gasto, # <- Adicionado aqui
+                'is_revenue': is_revenue            # <- Adicionado aqui
             })
 
         economic_result = income_month - total_quotas
@@ -78,7 +86,8 @@ class BudgetService:
                 'total_spent': int(monthly_data['total_spent']),
                 'economic_result': int(economic_result),
                 'cash_burn': int(cash_burn),
-                'provisions_balance': int(total_provisions_balance)
+                'provisions_balance': int(total_provisions_balance),
+                'pct_ideal_ano': pct_ideal_ano # <- Adicionado aqui
             }
         }
 

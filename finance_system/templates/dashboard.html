@@ -67,15 +67,20 @@
         </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th style="width: 30%;">Categoria</th>
-                        <th class="text-center">Impacto na Renda</th>
-                        <th class="text-center">Gasto Real (Mês)</th>
-                        <th class="text-center">Cota / Meta</th>
-                        <th class="text-end">Ação</th>
-                    </tr>
-                </thead>
+                <td>
+                    <div class="fw-bold text-dark">{{ row.category }}</div>
+                    {% if row.meta_anual > 0 %}
+                        <div class="mt-1" style="font-size: 0.8em;"> 
+                            Acumulado Ano: 
+                            <span class="fw-bold {{ 'text-danger' if row.pct_anual_gasto > kpis.pct_ideal_ano and not row.is_revenue else 'text-primary' }}">
+                                {{ "%.1f"|format(row.pct_anual_gasto) }}%
+                            </span>
+                            <span class="text-muted">(Ideal: {{ kpis.pct_ideal_ano }}%)</span>
+                        </div>
+                    {% else %}
+                        <span class="badge bg-secondary" style="font-size: 0.7em;">Não Planejado</span>
+                    {% endif %}
+                </td>
                 <tbody>
                     {% for row in rows %}
                     <tr class="{{ 'table-danger bg-opacity-10' if row.is_alert else '' }}">

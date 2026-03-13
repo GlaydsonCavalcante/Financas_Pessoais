@@ -142,7 +142,7 @@
                             <span>Falta Faturar: R$ {{ "{:,.0f}".format(item.saldo_restante) }}</span>
                         </div>
 
-                        <button class="btn btn-sm btn-outline-success w-100" 
+                        <button class="btn btn-sm btn-outline-success w-100"  
                                 onclick="openSpecialist('{{ item.categoria }}', {{ item.meta }}, {{ status_geral.renda_base_anual }}, {{ status_geral.total_metas_despesas }}, true)">
                             <i class="fas fa-chart-line me-2"></i>Analisar Histórico
                         </button>
@@ -501,7 +501,7 @@ function loadChart(category, metaAnual, c1Anual, c2Anual, is_revenue) {
                     borderColor: data.is_revenue ? '#198754' : '#dc3545',
                     backgroundColor: data.is_revenue ? 'rgba(25, 135, 84, 0.1)' : 'rgba(220, 53, 69, 0.1)',
                     borderWidth: 4,
-                    pointRadius: 4,
+                    pointRadius: data.point_radius_actual,
                     fill: true,
                     tension: 0
                 },

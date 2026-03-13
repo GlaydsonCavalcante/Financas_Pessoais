@@ -47,7 +47,7 @@ def import_files():
         uploaded_files = request.files.getlist('files')
         
         for f in uploaded_files:
-            f.name = f.filename 
+            f.name = f.filename  # type: ignore
             
         if uploaded_files:
             try:
@@ -542,6 +542,7 @@ def category_projection_api(category):
         meta_c2 = meta_anual * fator_c2 if not is_revenue else meta_anual
 
         proj_meta, proj_c1, proj_c2, real_acum = [], [], [], []
+        point_radius_actual = [] # NOVO: Lista para controlar os pontos do gráfico
         acumulado_atual = 0
         
         # Define até onde temos "Passado/Realizado"
@@ -550,15 +551,22 @@ def category_projection_api(category):
         # 3. Matemática do Acumulado (Exatamente como no seu Excel)
         for i in range(12):
             if (i + 1) <= mes_atual:
-                # O Passado é imutável: as 4 linhas andam juntas no valor real
                 acumulado_atual += actuals[i]
                 real_acum.append(round(acumulado_atual, 2))
                 proj_meta.append(round(acumulado_atual, 2))
                 proj_c1.append(round(acumulado_atual, 2))
                 proj_c2.append(round(acumulado_atual, 2))
+                
+                # NOVO: Se o mês não teve gasto (valor 0), o raio do ponto é 0 (invisível)
+                if actuals[i] == 0:
+                    point_radius_actual.append(0)
+                else:
+                    point_radius_actual.append(4) # Tamanho padrão do ponto (pode ajustar)
             else:
                 # O Futuro não tem valor real (fica None/null no JS)
                 real_acum.append(None)
+                point_radius_actual.append(0) # Futuro não tem ponto
+                
                 meses_restantes = 12 - mes_atual
                 
                 # Rampa hidráulica até ao alvo final
@@ -576,7 +584,8 @@ def category_projection_api(category):
             'meta': proj_meta,
             'c1': proj_c1,
             'c2': proj_c2,
-            'is_revenue': is_revenue
+            'is_revenue': is_revenue,
+            'point_radius_actual': point_radius_actual # NOVO: Retornando para o frontend
         })
         
     except Exception as e:

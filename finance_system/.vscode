@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./finance_system"
+    ],
+    "python.analysis.typeCheckingMode": "basic"
+}

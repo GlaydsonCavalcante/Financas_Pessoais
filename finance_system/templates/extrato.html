@@ -105,7 +105,7 @@ function updateCategory(hashId, newCategory) {
     formData.append('hash_id', hashId);
     formData.append('category', newCategory);
 
-    fetch("{{ url_for('extrato_update') }}", {
+    fetch("{{ url_for('extrato_update') }}", { 
         method: 'POST',
         body: formData
     })
